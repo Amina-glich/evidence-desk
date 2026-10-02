@@ -1,0 +1,121 @@
+{
+  "id": "evidence-desk",
+  "name": "Evidence Desk",
+  "version": "0.2.0",
+  "description": "Compare AI/ML research papers with findings traced to a source, page and exact quotation.",
+  "entry": "index.jsx",
+  "offline_capable": false,
+  "permissions": {},
+  "runtime": {
+    "imports": [
+      "react"
+    ],
+    "esm_deps": []
+  },
+  "source_files": [
+    "service.py",
+    "requirements.lock",
+    "evidence-desk.md",
+    "desk/__init__.py",
+    "desk/binding.py",
+    "desk/errors.py",
+    "desk/evidence.py",
+    "desk/export.py",
+    "desk/pdf_text.py",
+    "desk/project_fs.py",
+    "desk/service.py",
+    "desk/sources.py",
+    "desk/status.py",
+    "desk/tool_args.py",
+    "desk/vocabulary.py",
+    "templates/project-README.md",
+    "templates/inbox-README.md",
+    "templates/desk.json",
+    "templates/synthesis.md"
+  ],
+  "python": {
+    "lock": "requirements.lock"
+  },
+  "skills": [
+    "evidence-desk.md"
+  ],
+  "service": {
+    "entry": "service.py"
+  },
+  "tools": [
+    {
+      "name": "project_status",
+      "description": "Read-only. Reports which Evidence Desk project this chat is bound to and what it holds: PDFs uploaded to inbox/, registered source ids, evidence and export files, and whether desk.json is valid. Works only in a chat inside an Evidence Desk project; the project is determined from the chat, so it takes no arguments.",
+      "input_schema": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "add_source",
+      "description": "Register one PDF the owner uploaded to this project's inbox/ as a source (S1, S2, ...). Extracts the text of every page so quotations can be checked. The same PDF is registered only once. Works only in a chat inside an Evidence Desk project; the project is determined from the chat.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "file": {
+            "type": "string",
+            "description": "Project path of the PDF inside inbox/, for example inbox/paper.pdf."
+          }
+        },
+        "required": [
+          "file"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "check_evidence",
+      "description": "Read-only. Validates every evidence/S<n>.json file and checks each quotation against the registered page text of its source, on the page it cites. Reports invalid files and every quotation that is not found, is on a different page, or is too short. Matching is exact after normalizing PDF extraction artefacts; nothing is fuzzy-matched. Takes no arguments.",
+      "input_schema": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "export_comparison",
+      "description": "Write exports/comparison.csv: one row per source in desk.json compare_sources (all registered sources if empty), with status, finding, evidence and quotation check for each of the six dimensions. Refuses while an in-scope evidence file is invalid. Takes no arguments.",
+      "input_schema": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      }
+    }
+  ],
+  "project_templates": [
+    {
+      "id": "paper-comparison",
+      "name": "Paper comparison",
+      "kind": "research",
+      "description": "Compare research papers on six dimensions, with every finding traced to a page and exact quotation.",
+      "guidance": "Evidence Desk project. Read the evidence-desk skill before working. inbox/ holds the owner's uploads: read only. sources/ and exports/ are written only by Evidence Desk tools: never edit them. You write evidence/, desk.json and synthesis.md. A Reported finding needs a source id, page and exact quotation; otherwise it is Not reported (checked and absent) or Not assessed. Never invent findings.",
+      "skills": [
+        "evidence-desk.md"
+      ],
+      "files": {
+        "README.md": "templates/project-README.md",
+        "inbox/README.md": "templates/inbox-README.md",
+        "desk.json": "templates/desk.json",
+        "synthesis.md": "templates/synthesis.md"
+      },
+      "actions": [
+        {
+          "id": "check-setup",
+          "name": "Check project setup",
+          "prompt": "Call the Evidence Desk project_status tool and tell me what it reports: which project this chat is bound to, which papers are in inbox/, and anything that needs my attention. Do not change any files."
+        },
+        {
+          "id": "plan",
+          "name": "Plan a comparison",
+          "prompt": "Help me set up this paper comparison. Read desk.json and project_status first, then ask me for the research question and the papers in scope before you edit desk.json. Do not record any findings yet."
+        }
+      ]
+    }
+  ]
+}

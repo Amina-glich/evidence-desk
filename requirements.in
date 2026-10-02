@@ -1,0 +1,3 @@
+# Top-level Python dependencies of the Evidence Desk service.
+# Regenerate requirements.lock with the command in CLAUDE.md.
+pypdf
