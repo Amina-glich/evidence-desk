@@ -91,6 +91,25 @@ Each finding has one status (id: label):
       "value": "Trained and evaluated on CIFAR-10 (50k train / 10k test).",
       "evidence": [{"page": 5, "quote": "We train on the 50,000 CIFAR-10 training images"}]
     },
+    "results": {
+      "status": "reported",
+      "value": "Top-1 accuracy on CIFAR-10 is given as both 91.2% (Table 2) and 92.4% (abstract).",
+      "evidence": [
+        {"page": 7, "quote": "reaches 91.2% top-1 accuracy on CIFAR-10"},
+        {"page": 1, "quote": "achieves 92.4% top-1 accuracy"}
+      ],
+      "note": "Single run; no variance reported.",
+      "absences": [
+        {"item": "Results on any other dataset", "checked": "Results section and appendix, pp. 6-14."}
+      ],
+      "contradictions": [{
+        "description": "The abstract and Table 2 give different accuracies.",
+        "evidence": [
+          {"page": 1, "quote": "achieves 92.4% top-1 accuracy"},
+          {"page": 7, "quote": "reaches 91.2% top-1 accuracy on CIFAR-10"}
+        ]
+      }]
+    },
     "runtime": {
       "status": "not_reported",
       "checked": "All 14 pages, including the appendix."
@@ -114,8 +133,24 @@ Rules:
 - `not_reported` needs `checked`: which part of the source you searched. Use
   it only after actually reading that material; otherwise leave the dimension
   `not_assessed`.
-- Each finding may add an optional `note`. Any other key, dimension or
-  status makes the whole file invalid; `check_evidence` names the problem.
+- Each finding may add an optional `note` for a qualification a reader must
+  not miss (scope, setting, caveat). It is exported with the finding.
+- A `reported` finding may add `absences`: things you looked for within that
+  dimension and did not find, each with `item` and `checked` (what you
+  searched). Use them when a dimension is partly reported, for example
+  latency reported but no hardware named. A wholly absent dimension is
+  `not_reported` instead.
+- A `reported` finding may add `contradictions`: places where the source
+  disagrees with itself. Each has a `description` and `evidence` quoting
+  every side (at least two different quotations; repeating the same page and
+  quotation is refused); they are checked exactly like evidence. Record the
+  disagreement; never pick a side or average it away. `value` states every
+  side, as in the example above, without resolving it.
+- Keep quotations, notes and descriptions concise. `export_comparison`
+  refuses, naming the cell, if any CSV cell would exceed 32,000 characters,
+  because spreadsheet software silently cuts longer cells.
+- Any other key, dimension or status makes the whole file invalid;
+  `check_evidence` names the problem.
 - A value the paper states only for some settings is reported with that
   scope in `value`; do not generalise it.
 
@@ -124,4 +159,5 @@ Rules:
 `synthesis.md` keeps one section per dimension, in the order above. Every
 claim cites its evidence as `[S1 p.5]`. State Not reported and Not assessed
 explicitly instead of omitting them, and do not draw conclusions the cited
-quotations do not support.
+quotations do not support. Every note, checked absence and contradiction in
+the brief must also be in the evidence files, so it reaches the CSV export.

@@ -1,7 +1,7 @@
 {
   "id": "evidence-desk",
   "name": "Evidence Desk",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Compare AI/ML research papers with findings traced to a source, page and exact quotation.",
   "entry": "index.jsx",
   "offline_capable": false,
@@ -80,7 +80,7 @@
     },
     {
       "name": "export_comparison",
-      "description": "Write exports/comparison.csv: one row per source in desk.json compare_sources (all registered sources if empty), with status, finding, evidence and quotation check for each of the six dimensions. Refuses while an in-scope evidence file is invalid. Takes no arguments.",
+      "description": "Write exports/comparison.csv: one row per source in desk.json compare_sources (all registered sources if empty), with status, finding, evidence, quotation check, note, checked absences and contradictions for each of the six dimensions. Refuses while an in-scope evidence file is invalid. Takes no arguments.",
       "input_schema": {
         "type": "object",
         "properties": {},

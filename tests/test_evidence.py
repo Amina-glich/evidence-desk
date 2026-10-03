@@ -6,7 +6,7 @@ import json
 import unittest
 
 from desk.evidence import (
-  NOT_FOUND, PAGE_OUT_OF_RANGE, TOO_SHORT, VERIFIED, WRONG_PAGE, Quote,
+  NOT_FOUND, PAGE_OUT_OF_RANGE, TOO_SHORT, VERIFIED, WRONG_PAGE, Absence, Contradiction, Quote,
   check_quote, normalize_quote, page_variants, parse_evidence,
 )
 from tests.pdf_fixtures import PAPER_PAGES
@@ -107,6 +107,87 @@ class ParseEvidenceTest(unittest.TestCase):
     data = json.loads(evidence({}))
     data["schema"] = 2
     self.assertInvalid(json.dumps(data).encode(), '"schema" must be 1')
+
+  def test_notes_are_kept_on_every_status(self):
+    findings, problems = parse_evidence(evidence({
+      "data": {**REPORTED, "note": "Only the CIFAR-10 setting."},
+      "runtime": {"status": "not_reported", "checked": "All 3 pages.", "note": "No latency table."},
+      "task": {"status": "not_assessed", "note": "Abstract only so far."},
+    }), "S1")
+    self.assertEqual(problems, [])
+    self.assertEqual(findings["data"].note, "Only the CIFAR-10 setting.")
+    self.assertEqual(findings["runtime"].note, "No latency table.")
+    self.assertEqual(findings["task"].note, "Abstract only so far.")
+
+  def test_reported_findings_keep_absences_and_contradictions(self):
+    findings, problems = parse_evidence(evidence({"results": {
+      **REPORTED,
+      "absences": [{"item": "Energy use", "checked": "All 3 pages."}],
+      "contradictions": [{
+        "description": "Accuracy differs between abstract and results.",
+        "evidence": [
+          {"page": 1, "quote": "We study real-time object detection."},
+          {"page": 3, "quote": "Our model reaches 91.2% top-1 accuracy"},
+        ],
+      }],
+    }}), "S1")
+    self.assertEqual(problems, [])
+    result = findings["results"]
+    self.assertEqual(result.absences, (Absence("Energy use", "All 3 pages."),))
+    self.assertEqual(result.contradictions, (Contradiction(
+      "Accuracy differs between abstract and results.",
+      (Quote(1, "We study real-time object detection."), Quote(3, "Our model reaches 91.2% top-1 accuracy")),
+    ),))
+
+  def test_a_contradiction_cannot_repeat_one_passage(self):
+    side = {"page": 3, "quote": "Our model reaches 91.2% top-1 accuracy"}
+    other = {"page": 1, "quote": "We study real-time object detection."}
+
+    def results(*sides):
+      return evidence({"results": {**REPORTED, "contradictions": [
+        {"description": "Two accuracies.", "evidence": list(sides)},
+      ]}})
+
+    self.assertInvalid(results(side, side), "repeats the same page and quotation")
+    self.assertInvalid(results(side, other, side), "repeats the same page and quotation")
+    # Only whitespace or typographic forms differ: still the same passage.
+    spaced = {"page": 3, "quote": "Our model  reaches 91.2%\ntop-1 accuracy"}
+    self.assertInvalid(results(side, spaced), "repeats the same page and quotation")
+    # The same words on another page, or another passage, are different sides.
+    findings, problems = parse_evidence(results(side, {**side, "page": 4}), "S1")
+    self.assertEqual(problems, [])
+    findings, problems = parse_evidence(results(side, other), "S1")
+    self.assertEqual(problems, [])
+    self.assertEqual(len(findings["results"].contradictions[0].evidence), 2)
+
+  def test_qualifications_are_validated_strictly(self):
+    side = {"page": 3, "quote": "Our model reaches 91.2% top-1 accuracy"}
+    one_sided = {"description": "Two accuracies.", "evidence": [side]}
+    cases = {
+      # A contradiction must quote at least two passages.
+      "contradictions[0].evidence: needs 2-20 items": {**REPORTED, "contradictions": [one_sided]},
+      'needs exactly "description" and "evidence"': {**REPORTED, "contradictions": [{"evidence": [side, side]}]},
+      "description: say what disagrees": {**REPORTED, "contradictions": [{"description": " ", "evidence": [side, side]}]},
+      "contradictions: needs 1-10 items": {**REPORTED, "contradictions": []},
+      ".contradictions[0].evidence[1].page": {
+        **REPORTED, "contradictions": [{"description": "x", "evidence": [side, {"page": 0, "quote": "abcdefghijk"}]}],
+      },
+      # An absence must say what was searched.
+      'needs exactly "item" and "checked"': {**REPORTED, "absences": [{"item": "Energy use"}]},
+      "absences[0].checked: say which part": {**REPORTED, "absences": [{"item": "Energy use", "checked": ""}]},
+      "absences: needs 1-20 items": {**REPORTED, "absences": "none"},
+    }
+    for fragment, finding in cases.items():
+      with self.subTest(fragment=fragment):
+        self.assertInvalid(evidence({"results": finding}), fragment)
+    # Qualifications belong to Reported findings only: a whole-dimension
+    # absence is not_reported with "checked", and not_assessed means unchecked.
+    self.assertInvalid(evidence({"runtime": {
+      "status": "not_reported", "checked": "All pages.", "absences": [{"item": "x", "checked": "y"}],
+    }}), "not_reported does not take absences")
+    self.assertInvalid(evidence({"task": {
+      "status": "not_assessed", "contradictions": [one_sided],
+    }}), "not_assessed does not take contradictions")
 
 
 if __name__ == "__main__":

@@ -10,8 +10,16 @@ A quotation is checked only against the registered page text of its source
 fixed normalization that undoes PDF extraction artefacts only: Unicode
 compatibility forms (ligatures such as "ﬁ"), typographic quotes and dashes,
 soft hyphens and zero-width characters, whitespace runs, and line breaks
-after a hyphen (read both as a split word and as a real hyphen). Case, words, numbers and order must match. There is
-no fuzzy or model-judged match: a quote either occurs or the check fails.
+after a hyphen (read both as a split word and as a real hyphen). Case, words,
+numbers and order must match. There is no fuzzy or model-judged match: a
+quote either occurs or the check fails.
+
+A Reported finding may carry qualifications that must survive into the
+export: a ``note``, checked ``absences`` (items searched for within the
+dimension and not found, with what was searched), and ``contradictions``
+(passages of the same source that disagree). Every contradiction quotes each
+side and each quote is checked like evidence; the contradiction itself is
+recorded, never resolved.
 """
 
 from __future__ import annotations
@@ -34,6 +42,8 @@ EVIDENCE_FILE_RE = re.compile(r"^(S[1-9][0-9]{0,5})\.json$")
 EVIDENCE_MAX_BYTES = 2 * 1024 * 1024
 MAX_EVIDENCE_FILES = 500
 MAX_QUOTES_PER_FINDING = 20
+MAX_ABSENCES_PER_FINDING = 20
+MAX_CONTRADICTIONS_PER_FINDING = 10
 MIN_QUOTE_CHARS = 10
 MAX_QUOTE_CHARS = 1000
 MAX_TEXT_CHARS = 2000
@@ -43,7 +53,7 @@ REPORT_QUOTE_CHARS = 120
 DIMENSION_IDS = tuple(dimension for dimension, _label in DIMENSIONS)
 STATUS_IDS = frozenset(status for status, _label in STATUSES)
 _FINDING_KEYS = {
-  "reported": ({"status", "value", "evidence"}, {"note"}),
+  "reported": ({"status", "value", "evidence"}, {"note", "absences", "contradictions"}),
   "not_reported": ({"status", "checked"}, {"note"}),
   "not_assessed": ({"status"}, {"note"}),
 }
@@ -106,11 +116,28 @@ class Quote:
 
 
 @dataclass(frozen=True)
+class Absence:
+  """Something looked for within a dimension and not found."""
+  item: str
+  checked: str
+
+
+@dataclass(frozen=True)
+class Contradiction:
+  """Passages of one source that disagree; each side is quoted."""
+  description: str
+  evidence: tuple[Quote, ...]
+
+
+@dataclass(frozen=True)
 class Finding:
   status: str
   value: str | None = None
   evidence: tuple[Quote, ...] = ()
   checked: str | None = None
+  note: str | None = None
+  absences: tuple[Absence, ...] = ()
+  contradictions: tuple[Contradiction, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -127,6 +154,73 @@ def _text(value: object, *, max_chars: int = MAX_TEXT_CHARS) -> str | None:
   if isinstance(value, str) and value.strip() and len(value) <= max_chars and "\x00" not in value:
     return value.strip()
   return None
+
+
+def _parse_quotes(items: object, where: str, problems: list[str], *, minimum: int) -> tuple[Quote, ...] | None:
+  """A list of {page, quote} items, or None after recording what is wrong."""
+  if not isinstance(items, list) or not minimum <= len(items) <= MAX_QUOTES_PER_FINDING:
+    problems.append(f"{where}: needs {minimum}-{MAX_QUOTES_PER_FINDING} items.")
+    return None
+  quotes = []
+  for index, entry in enumerate(items):
+    at = f"{where}[{index}]"
+    if not isinstance(entry, dict) or set(entry) != {"page", "quote"}:
+      problems.append(f'{at}: needs exactly "page" and "quote".')
+      continue
+    page, quote = entry["page"], _text(entry["quote"], max_chars=MAX_QUOTE_CHARS)
+    if isinstance(page, bool) or not isinstance(page, int) or page < 1:
+      problems.append(f"{at}.page: must be a whole number from 1 (the PDF page position).")
+    elif quote is None:
+      problems.append(f"{at}.quote: must be non-empty text of at most {MAX_QUOTE_CHARS} characters.")
+    else:
+      quotes.append(Quote(page, quote))
+  return tuple(quotes) if len(quotes) == len(items) else None
+
+
+def _parse_absences(items: object, where: str, problems: list[str]) -> tuple[Absence, ...] | None:
+  if not isinstance(items, list) or not 1 <= len(items) <= MAX_ABSENCES_PER_FINDING:
+    problems.append(f"{where}: needs 1-{MAX_ABSENCES_PER_FINDING} items.")
+    return None
+  absences = []
+  for index, entry in enumerate(items):
+    at = f"{where}[{index}]"
+    if not isinstance(entry, dict) or set(entry) != {"item", "checked"}:
+      problems.append(f'{at}: needs exactly "item" and "checked".')
+      continue
+    item, checked = _text(entry["item"]), _text(entry["checked"])
+    if item is None:
+      problems.append(f"{at}.item: say what was looked for, in at most {MAX_TEXT_CHARS} characters.")
+    elif checked is None:
+      problems.append(f"{at}.checked: say which part of the source was searched.")
+    else:
+      absences.append(Absence(item, checked))
+  return tuple(absences) if len(absences) == len(items) else None
+
+
+def _parse_contradictions(items: object, where: str, problems: list[str]) -> tuple[Contradiction, ...] | None:
+  if not isinstance(items, list) or not 1 <= len(items) <= MAX_CONTRADICTIONS_PER_FINDING:
+    problems.append(f"{where}: needs 1-{MAX_CONTRADICTIONS_PER_FINDING} items.")
+    return None
+  contradictions = []
+  for index, entry in enumerate(items):
+    at = f"{where}[{index}]"
+    if not isinstance(entry, dict) or set(entry) != {"description", "evidence"}:
+      problems.append(f'{at}: needs exactly "description" and "evidence".')
+      continue
+    description = _text(entry["description"])
+    if description is None:
+      problems.append(f"{at}.description: say what disagrees, in at most {MAX_TEXT_CHARS} characters.")
+    # Each side of a contradiction is quoted, so at least two quotations, and
+    # repeating one passage cannot show a disagreement.
+    quotes = _parse_quotes(entry["evidence"], f"{at}.evidence", problems, minimum=2)
+    if quotes is not None:
+      sides = [(quote.page, normalize_quote(quote.quote)) for quote in quotes]
+      if len(set(sides)) != len(sides):
+        problems.append(f"{at}.evidence: repeats the same page and quotation; quote each side separately.")
+        quotes = None
+    if description is not None and quotes is not None:
+      contradictions.append(Contradiction(description, quotes))
+  return tuple(contradictions) if len(contradictions) == len(items) else None
 
 
 def parse_evidence(raw: bytes, source_id: str) -> tuple[dict[str, Finding] | None, list[str]]:
@@ -165,41 +259,36 @@ def parse_evidence(raw: bytes, source_id: str) -> tuple[dict[str, Finding] | Non
       problems.append(f"{where}: {status} needs {', '.join(missing)}.")
     if extra:
       problems.append(f"{where}: {status} does not take {', '.join(extra)}.")
-    if "note" in item and _text(item["note"]) is None:
-      problems.append(f"{where}.note: must be non-empty text of at most {MAX_TEXT_CHARS} characters.")
+    note = None
+    if "note" in item:
+      note = _text(item["note"])
+      if note is None:
+        problems.append(f"{where}.note: must be non-empty text of at most {MAX_TEXT_CHARS} characters.")
     if missing or extra:
       continue
     if status == "reported":
       value = _text(item["value"])
       if value is None:
         problems.append(f"{where}.value: must be non-empty text of at most {MAX_TEXT_CHARS} characters.")
-      quotes = []
-      evidence = item["evidence"]
-      if not isinstance(evidence, list) or not 1 <= len(evidence) <= MAX_QUOTES_PER_FINDING:
-        problems.append(f"{where}.evidence: needs 1-{MAX_QUOTES_PER_FINDING} items.")
-        continue
-      for index, entry in enumerate(evidence):
-        at = f"{where}.evidence[{index}]"
-        if not isinstance(entry, dict) or set(entry) != {"page", "quote"}:
-          problems.append(f'{at}: needs exactly "page" and "quote".')
-          continue
-        page, quote = entry["page"], _text(entry["quote"], max_chars=MAX_QUOTE_CHARS)
-        if isinstance(page, bool) or not isinstance(page, int) or page < 1:
-          problems.append(f"{at}.page: must be a whole number from 1 (the PDF page position).")
-        elif quote is None:
-          problems.append(f"{at}.quote: must be non-empty text of at most {MAX_QUOTE_CHARS} characters.")
-        else:
-          quotes.append(Quote(page, quote))
-      if value is not None and len(quotes) == len(evidence):
-        findings[dimension] = Finding(status, value=value, evidence=tuple(quotes))
+      quotes = _parse_quotes(item["evidence"], f"{where}.evidence", problems, minimum=1)
+      absences = contradictions = ()
+      if "absences" in item:
+        absences = _parse_absences(item["absences"], f"{where}.absences", problems)
+      if "contradictions" in item:
+        contradictions = _parse_contradictions(item["contradictions"], f"{where}.contradictions", problems)
+      if None not in (value, quotes, absences, contradictions):
+        findings[dimension] = Finding(
+          status, value=value, evidence=quotes, note=note,
+          absences=absences, contradictions=contradictions,
+        )
     elif status == "not_reported":
       checked = _text(item["checked"])
       if checked is None:
         problems.append(f"{where}.checked: say which part of the source was searched.")
       else:
-        findings[dimension] = Finding(status, checked=checked)
+        findings[dimension] = Finding(status, checked=checked, note=note)
     else:
-      findings[dimension] = Finding(status)
+      findings[dimension] = Finding(status, note=note)
   return (None, problems) if problems else (findings, [])
 
 
@@ -235,8 +324,17 @@ class SourceReport:
   title: str | None = None
   file: str | None = None
   findings: dict[str, Finding] = field(default_factory=dict)
+  # Evidence quote checks, in the order of Finding.evidence.
   checks: dict[str, tuple[QuoteCheck, ...]] = field(default_factory=dict)
+  # Per contradiction, its quote checks, in the order of Finding.contradictions.
+  contradiction_checks: dict[str, tuple[tuple[QuoteCheck, ...], ...]] = field(default_factory=dict)
   problems: list[str] = field(default_factory=list)
+
+  def all_checks(self, dimension: str) -> tuple[QuoteCheck, ...]:
+    """Every quotation check of one dimension: evidence, then contradictions."""
+    return self.checks.get(dimension, ()) + tuple(
+      check for checks in self.contradiction_checks.get(dimension, ()) for check in checks
+    )
 
 
 def _evidence_files(project: Project) -> list[str]:
@@ -290,18 +388,19 @@ def check_project(project: Project) -> list[SourceReport]:
         else:
           report.evidence = "valid"
           report.findings = findings
-    if source is not None and report.findings:
-      variants = tuple(page_variants(text) for text in source.pages)
+    if report.findings:
+      if source is not None:
+        variants = tuple(page_variants(text) for text in source.pages)
+        check = lambda quote: check_quote(quote, variants, source.pages)
+      else:
+        check = lambda quote: QuoteCheck(quote.page, quote.quote, SOURCE_UNAVAILABLE)
       for dimension, finding in report.findings.items():
         if finding.evidence:
-          report.checks[dimension] = tuple(
-            check_quote(quote, variants, source.pages) for quote in finding.evidence
-          )
-    elif report.findings:
-      for dimension, finding in report.findings.items():
-        if finding.evidence:
-          report.checks[dimension] = tuple(
-            QuoteCheck(quote.page, quote.quote, SOURCE_UNAVAILABLE) for quote in finding.evidence
+          report.checks[dimension] = tuple(check(quote) for quote in finding.evidence)
+        if finding.contradictions:
+          report.contradiction_checks[dimension] = tuple(
+            tuple(check(quote) for quote in contradiction.evidence)
+            for contradiction in finding.contradictions
           )
     reports.append(report)
   return reports
@@ -328,14 +427,19 @@ def check_evidence(binding: ProjectBinding, _arguments: dict) -> dict:
       counts[status_of(report, dimension)] += 1
     verified = failed = 0
     for dimension in DIMENSION_IDS:
-      for check in report.checks.get(dimension, ()):
+      labelled = [("evidence", check) for check in report.checks.get(dimension, ())]
+      labelled += [
+        ("contradiction", check)
+        for checks in report.contradiction_checks.get(dimension, ()) for check in checks
+      ]
+      for part, check in labelled:
         if check.result == VERIFIED:
           verified += 1
           continue
         failed += 1
         problem = {
-          "source": report.source_id, "dimension": dimension, "page": check.page,
-          "result": check.result, "quote": _short(check.quote),
+          "source": report.source_id, "dimension": dimension, "part": part,
+          "page": check.page, "result": check.result, "quote": _short(check.quote),
         }
         if check.found_on:
           problem["found_on"] = list(check.found_on[:20])
@@ -350,6 +454,8 @@ def check_evidence(binding: ProjectBinding, _arguments: dict) -> dict:
       "evidence": report.evidence,
       "source_text": report.source_text,
       **counts,
+      "absences": sum(len(finding.absences) for finding in report.findings.values()),
+      "contradictions": sum(len(finding.contradictions) for finding in report.findings.values()),
       "quotes_verified": verified,
       "quotes_failed": failed,
     })

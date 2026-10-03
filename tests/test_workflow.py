@@ -222,7 +222,140 @@ class WorkflowTest(unittest.TestCase):
     self.assertEqual(first["Research task or problem: status"], "Not assessed")
     for _dimension, label in DIMENSIONS:
       self.assertEqual(rows[1][f"{label}: status"], "Not assessed")
-    self.assertEqual(len(rows[0]), 3 + 4 * len(DIMENSIONS))
+      for column in ("note", "checked absences", "contradictions"):
+        self.assertEqual(rows[1][f"{label}: {column}"], "")
+    self.assertEqual(len(rows[0]), 3 + 7 * len(DIMENSIONS))
+
+  def test_export_preserves_notes_absences_and_contradictions(self):
+    self.add()
+    data = good_evidence()
+    data["findings"]["results"].update({
+      "note": "Single-run numbers; no variance reported.",
+      "absences": [
+        {"item": "Energy use", "checked": "All 3 pages."},
+        {"item": "Results on other datasets", "checked": "Results section, p.3."},
+      ],
+      "contradictions": [{
+        "description": "Two passages that disagree (fixture).",
+        "evidence": [
+          {"page": 2, "quote": "evaluate on the 10,000 test images"},
+          {"page": 3, "quote": "Our model reaches 91.2% top-1 accuracy"},
+        ],
+      }],
+    })
+    data["findings"]["limitations"]["note"] = "No limitations section."
+    data["findings"]["task"] = {"status": "not_assessed", "note": "Only the abstract was read."}
+    self.write_evidence(data)
+    reply = self.call("export_comparison")
+    self.assertEqual((reply["quotes_verified"], reply["quotes_failed"]), (4, 0))
+    row = self.read_csv()[0]
+    label = "Metrics and reported results"
+    # Qualifications sit beside the status; they never change it.
+    self.assertEqual(row[f"{label}: status"], "Reported")
+    self.assertEqual(row[f"{label}: note"], "Single-run numbers; no variance reported.")
+    self.assertEqual(
+      row[f"{label}: checked absences"],
+      "Energy use (searched: All 3 pages.) | Results on other datasets (searched: Results section, p.3.)",
+    )
+    self.assertEqual(
+      row[f"{label}: contradictions"],
+      'Two passages that disagree (fixture).: '
+      'p.2: "evaluate on the 10,000 test images" [verified] vs '
+      'p.3: "Our model reaches 91.2% top-1 accuracy" [verified]',
+    )
+    self.assertEqual(row[f"{label}: check"], "Verified (3 of 3 quotations)")
+    # Not reported (checked and absent) and Not assessed (unchecked) stay distinct.
+    self.assertEqual(row["Limitations and gaps: status"], "Not reported")
+    self.assertEqual(row["Limitations and gaps: finding"], "Searched: All 3 pages.")
+    self.assertEqual(row["Limitations and gaps: note"], "No limitations section.")
+    self.assertEqual(row["Research task or problem: status"], "Not assessed")
+    self.assertEqual(row["Research task or problem: finding"], "")
+    self.assertEqual(row["Research task or problem: note"], "Only the abstract was read.")
+
+  def test_failed_contradiction_quotes_are_flagged_not_hidden(self):
+    self.add()
+    data = good_evidence()
+    data["findings"]["results"]["contradictions"] = [{
+      "description": "Latency differs between sections.",
+      "evidence": [
+        {"page": 3, "quote": "at 14 ms per image"},
+        {"page": 3, "quote": "at 18 ms per image on the phone"},
+      ],
+    }]
+    self.write_evidence(data)
+    report = self.call("check_evidence")
+    self.assertFalse(report["ok"])
+    self.assertEqual(report["sources"][0]["contradictions"], 1)
+    (problem,) = report["problems"]
+    self.assertEqual(
+      (problem["dimension"], problem["part"], problem["result"]),
+      ("results", "contradiction", "not_found"),
+    )
+    reply = self.call("export_comparison")
+    self.assertEqual((reply["quotes_verified"], reply["quotes_failed"]), (3, 1))
+    row = self.read_csv()[0]
+    label = "Metrics and reported results"
+    self.assertEqual(
+      row[f"{label}: check"],
+      "Failed (1 of 3 quotations): p.3 not found in the source text (contradiction)",
+    )
+    self.assertEqual(
+      row[f"{label}: contradictions"],
+      'Latency differs between sections.: p.3: "at 14 ms per image" [verified] vs '
+      'p.3: "at 18 ms per image on the phone" [check failed: p.3 not found in the source text]',
+    )
+
+  def test_qualification_text_cannot_inject_formulas(self):
+    self.add()
+    data = good_evidence()
+    data["findings"]["results"]["note"] = "=cmd|'/c calc'!A1"
+    data["findings"]["results"]["absences"] = [{"item": "@SUM(A1)", "checked": "All pages."}]
+    self.write_evidence(data)
+    self.call("export_comparison")
+    row = self.read_csv()[0]
+    self.assertEqual(row["Metrics and reported results: note"], "'=cmd|'/c calc'!A1")
+    self.assertTrue(row["Metrics and reported results: checked absences"].startswith("'@SUM"))
+
+  def test_contradictions_against_edited_page_text_are_not_trusted(self):
+    self.add()
+    data = good_evidence()
+    data["findings"]["results"]["contradictions"] = [{
+      "description": "Two figures.",
+      "evidence": [
+        {"page": 3, "quote": "Our model reaches 91.2% top-1 accuracy"},
+        {"page": 2, "quote": QUOTE_DATA},
+      ],
+    }]
+    self.write_evidence(data)
+    pages = self.root / "sources" / "S1" / "pages.json"
+    pages.write_text(pages.read_text().replace("CIFAR-10", "CIFAR-100"))
+    report = self.call("check_evidence")
+    parts = sorted((p.get("part"), p.get("result")) for p in report["problems"] if "part" in p)
+    self.assertIn(("contradiction", "source_unavailable"), parts)
+    self.assertEqual(report["summary"]["verified"], 0)
+    reply = self.call("export_comparison")
+    self.assertEqual((reply["quotes_verified"], reply["quotes_failed"]), (0, 4))
+    row = self.read_csv()[0]
+    self.assertNotIn("[verified]", row["Metrics and reported results: contradictions"])
+    self.assertEqual(row["Metrics and reported results: contradictions"].count("source text unavailable"), 2)
+
+  def test_an_oversized_cell_refuses_the_export_and_writes_nothing(self):
+    self.add()
+    data = good_evidence()
+    # Within every evidence-file limit, but two contradictions of 20
+    # 1000-character quotations make one CSV cell over the safe limit.
+    sides = [{"page": 3, "quote": f"{index:04d}" + "q" * 996} for index in range(20)]
+    data["findings"]["results"]["contradictions"] = [
+      {"description": "First.", "evidence": sides},
+      {"description": "Second.", "evidence": sides},
+    ]
+    self.write_evidence(data)
+    self.assertEqual(self.call("check_evidence")["sources"][0]["evidence"], "valid")
+    error = self.call("export_comparison", expect=409)
+    self.assertEqual(error["error"], "cell_too_large")
+    self.assertIn('S1 "Metrics and reported results: contradictions"', error["detail"])
+    self.assertIn("32,000", error["detail"])
+    self.assertFalse((self.root / "exports").exists())
 
   def test_export_is_deterministic_and_neutralizes_formulas(self):
     self.add()

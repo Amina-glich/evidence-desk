@@ -60,6 +60,12 @@ Done: binding, safe file layer, strict tool args, manifest, launcher
 P0 tools: `project_status`, `add_source` (inbox PDF ->
 `sources/S<n>/source.json` + `pages.json`, pypdf), `check_evidence`
 (deterministic quote check), `export_comparison` (`exports/comparison.csv`).
+Reported findings may carry `note`, `absences` (checked, with what was
+searched) and `contradictions` (at least two distinct sides, each quoted and
+verified, never resolved). The CSV keeps the original 27 columns in place
+(status labels unchanged) and appends note / checked absences /
+contradictions columns per dimension. Any cell over `MAX_CELL_CHARS`
+(32,000, below Excel's 32,767) refuses the export with `cell_too_large`.
 The manifest passes the platform's `validate_manifest_contract`, and
 `validate-app.py` passes with the exact Möbius compiler (`index.jsx`
 compiles with Rolldown 1.2.11).
