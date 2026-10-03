@@ -10,6 +10,10 @@ The same PDF bytes (SHA-256) are registered once.
 is never checked against text that changed after registration. This detects
 accidental edits; it is not a defense against a writer that also rewrites
 ``source.json``.
+
+Reading sources needs no PDF library: the comparison view's Project builder
+runs on the platform's own Python, without the app's pypdf environment, so
+``pdf_text`` is imported only when a PDF is registered.
 """
 
 from __future__ import annotations
@@ -21,7 +25,6 @@ from dataclasses import dataclass
 from desk import SCHEMA_VERSION
 from desk.binding import ProjectBinding
 from desk.errors import DeskError
-from desk.pdf_text import EXTRACTOR, MAX_PDF_BYTES, extract_pages
 from desk.project_fs import SOURCE_ID_RE, Project, project_lock, split_relative
 
 
@@ -159,6 +162,8 @@ def _reply(source_id: str, created: bool, record: dict) -> dict:
 
 
 def add_source(binding: ProjectBinding, arguments: dict) -> dict:
+  from desk.pdf_text import EXTRACTOR, MAX_PDF_BYTES, extract_pages
+
   path = inbox_pdf_path(arguments["file"])
   with binding.open() as project:
     data = project.read_bytes(path, max_bytes=MAX_PDF_BYTES)

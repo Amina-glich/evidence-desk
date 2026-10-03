@@ -21,6 +21,9 @@ import traceback
 from typing import Callable, Mapping
 
 from desk import evidence, export, sources, status
+# Imported here, not where it is used, so that Möbius's Apply-time smoke run of
+# this entry imports pypdf and a broken app environment fails the Apply.
+from desk import pdf_text  # noqa: F401
 from desk.binding import ProjectBinding, bind_call
 from desk.errors import DeskError
 from desk.tool_args import parse_tool_request

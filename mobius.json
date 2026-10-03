@@ -1,7 +1,7 @@
 {
   "id": "evidence-desk",
   "name": "Evidence Desk",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Compare AI/ML research papers with findings traced to a source, page and exact quotation.",
   "entry": "index.jsx",
   "offline_capable": false,
@@ -14,6 +14,8 @@
   },
   "source_files": [
     "service.py",
+    "build.sh",
+    "build_view.py",
     "requirements.lock",
     "evidence-desk.md",
     "desk/__init__.py",
@@ -27,6 +29,7 @@
     "desk/sources.py",
     "desk/status.py",
     "desk/tool_args.py",
+    "desk/viewer.py",
     "desk/vocabulary.py",
     "templates/project-README.md",
     "templates/inbox-README.md",
@@ -80,7 +83,7 @@
     },
     {
       "name": "export_comparison",
-      "description": "Write exports/comparison.csv: one row per source in desk.json compare_sources (all registered sources if empty), with status, finding, evidence, quotation check, note, checked absences and contradictions for each of the six dimensions. Refuses while an in-scope evidence file is invalid. Takes no arguments.",
+      "description": "Write exports/comparison.csv and exports/comparison.html for the sources in desk.json compare_sources (all registered sources if empty). The CSV has status, finding, evidence, quotation check, note, checked absences and contradictions for each of the six dimensions; the HTML is the same evidence as a citation-linked matrix. Refuses while an in-scope evidence file is invalid. Takes no arguments.",
       "input_schema": {
         "type": "object",
         "properties": {},
@@ -94,7 +97,7 @@
       "name": "Paper comparison",
       "kind": "research",
       "description": "Compare research papers on six dimensions, with every finding traced to a page and exact quotation.",
-      "guidance": "Evidence Desk project. Read the evidence-desk skill before working. inbox/ holds the owner's uploads: read only. sources/ and exports/ are written only by Evidence Desk tools: never edit them. You write evidence/, desk.json and synthesis.md. A Reported finding needs a source id, page and exact quotation; otherwise it is Not reported (checked and absent) or Not assessed. Never invent findings.",
+      "guidance": "Evidence Desk project. Read the evidence-desk skill before working. inbox/ holds the owner's uploads: read only. sources/ and exports/ are written only by Evidence Desk tools: never edit them. You write evidence/, desk.json and synthesis.md. A Reported finding needs a source id, page and exact quotation; otherwise it is Not reported (checked and absent) or Not assessed. Never invent findings. The Evidence comparison Creation and exports/comparison.html show the evidence as a citation-linked matrix; never present values from different papers as directly comparable.",
       "skills": [
         "evidence-desk.md"
       ],
@@ -104,6 +107,26 @@
         "desk.json": "templates/desk.json",
         "synthesis.md": "templates/synthesis.md"
       },
+      "previews": [
+        {
+          "id": "comparison",
+          "name": "Evidence comparison",
+          "source": "desk.json",
+          "builder": "comparison"
+        }
+      ],
+      "artifact_types": [
+        {
+          "id": "comparison",
+          "name": "Evidence comparison",
+          "extensions": [
+            "json"
+          ],
+          "preview": "html",
+          "script": "build.sh",
+          "output": "index.html"
+        }
+      ],
       "actions": [
         {
           "id": "check-setup",

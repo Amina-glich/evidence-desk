@@ -65,6 +65,14 @@ NOT_FOUND = "not_found"
 PAGE_OUT_OF_RANGE = "page_out_of_range"
 TOO_SHORT = "too_short"
 SOURCE_UNAVAILABLE = "source_unavailable"
+# How a failed check reads to people, in the CSV and the evidence view.
+RESULT_LABELS = {
+  WRONG_PAGE: "found on a different page",
+  NOT_FOUND: "not found in the source text",
+  PAGE_OUT_OF_RANGE: "page is beyond the end of the PDF",
+  TOO_SHORT: "quotation too short to check",
+  SOURCE_UNAVAILABLE: "source text unavailable",
+}
 
 
 # Normalization.

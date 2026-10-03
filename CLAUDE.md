@@ -53,7 +53,7 @@ app produces a research brief (`synthesis.md`) and a comparison CSV.
   templates, tests or outputs. Test PDFs are generated in memory
   (`tests/pdf_fixtures.py`).
 
-## Status (2026-10-02)
+## Status (2026-10-04)
 
 Done: binding, safe file layer, strict tool args, manifest, launcher
 `index.jsx`, Paper comparison template, agent skill, service entry, and the
@@ -66,17 +66,28 @@ verified, never resolved). The CSV keeps the original 27 columns in place
 (status labels unchanged) and appends note / checked absences /
 contradictions columns per dimension. Any cell over `MAX_CELL_CHARS`
 (32,000, below Excel's 32,767) refuses the export with `cell_too_large`.
+0.4.0 adds the citation-linked comparison view (`desk/viewer.py`): an
+evidence matrix that never charts values across papers. `export_comparison`
+writes it to `exports/comparison.html`; projects created from the 0.4.0
+template also get an "Evidence comparison" Creation built by `build.sh` ->
+`build_view.py`. Möbius runs builders with the platform's Python, not the
+app environment, so the builder's import chain must not need pypdf
+(`desk.sources` imports `pdf_text` lazily; `desk.service` imports it eagerly
+for the Apply smoke run; `tests/test_build_view.py` enforces this). Artifact
+types come from the template snapshot taken at project creation, so older
+projects never get the Creation.
 The manifest passes the platform's `validate_manifest_contract`, and
 `validate-app.py` passes with the exact Möbius compiler (`index.jsx`
 compiles with Rolldown 1.2.11).
 
-Not done (next stages): `add_source` by arXiv id / DOI (network), the
-comparison viewer Creation, Semantic Scholar suggestions.
+Not done (next stages): `add_source` by arXiv id / DOI (network), Semantic
+Scholar suggestions.
 
-Never verified in a live Möbius instance: install and Apply (environment
-build from the lock, which needs PyPI access), live binding against the real
-database, tool calls from a real agent, launcher rendering, and pypdf quality
-on real two-column papers.
+Verified by the owner in a hosted Möbius instance: 0.3.0 end to end (install
+and Apply, live binding, tool calls from a real agent, two papers, 51
+quotations verified, CSV qualifications). Not yet verified there: the 0.4.0
+comparison Creation build and its rendering in the Möbius preview, and pypdf
+quality on a wider range of papers.
 
 ## Platform direction
 
@@ -99,9 +110,9 @@ Design consequences:
 - Tests stay offline: HTTP is injected and fed recorded fixtures.
 
 MVP order: P0 `add_source` from `inbox/` PDFs, deterministic
-`check_evidence`, `export_comparison` CSV (done); P1 arXiv/DOI metadata
-lookup and a comparison viewer Creation (Project `artifact_types` HTML
-builder); P2 Semantic Scholar suggestions, reviewer helper pass.
+`check_evidence`, `export_comparison` CSV (done); P1 comparison view
+Creation (done in 0.4.0) and arXiv/DOI metadata lookup; P2 Semantic Scholar
+suggestions, reviewer helper pass.
 
 ## Python dependencies
 

@@ -9,22 +9,16 @@ from __future__ import annotations
 
 import csv
 import io
-import json
 import unittest
 from unittest import mock
 
 from desk import export
 from desk.errors import DeskError
-from desk.evidence import QuoteCheck, SOURCE_UNAVAILABLE, SourceReport, check_quote, page_variants, parse_evidence
 from desk.export import MAX_CELL_CHARS, build_csv, header_row
 from desk.vocabulary import DIMENSIONS
-from tests.pdf_fixtures import PAPER_PAGES
+from tests.reports import QUOTE_DATA, QUOTE_RESULT, REPORTED, report_for
 
 
-PAGES = tuple("\n".join(lines) + "\n" for lines in PAPER_PAGES)
-QUOTE_DATA = "We train on the 50,000 CIFAR-10 training images"
-QUOTE_RESULT = "Our model reaches 91.2% top-1 accuracy"
-REPORTED = {"status": "reported", "value": "CIFAR-10.", "evidence": [{"page": 2, "quote": QUOTE_DATA}]}
 FORMULA_PAYLOADS = ("=HYPERLINK(\"http://x\")", "+1+1", "-2+3", "@SUM(A1)", " =1+1", "\t=1+1")
 
 # The column layout before qualification columns existed, in order.
@@ -32,27 +26,6 @@ ORIGINAL_HEADER = ["Source", "Title", "File"] + [
   f"{label}: {part}" for _dimension, label in DIMENSIONS
   for part in ("status", "finding", "evidence", "check")
 ]
-
-
-def report_for(findings, *, source_available=True):
-  raw = json.dumps({"schema": 1, "source": "S1", "findings": findings}).encode()
-  parsed, problems = parse_evidence(raw, "S1")
-  assert parsed is not None, problems
-  report = SourceReport("S1", registered=True, evidence="valid", title="T", file="inbox/p.pdf", findings=parsed)
-  variants = tuple(page_variants(text) for text in PAGES)
-  if source_available:
-    check = lambda quote: check_quote(quote, variants, PAGES)
-  else:
-    check = lambda quote: QuoteCheck(quote.page, quote.quote, SOURCE_UNAVAILABLE)
-  for dimension, finding in parsed.items():
-    if finding.evidence:
-      report.checks[dimension] = tuple(check(quote) for quote in finding.evidence)
-    if finding.contradictions:
-      report.contradiction_checks[dimension] = tuple(
-        tuple(check(quote) for quote in contradiction.evidence)
-        for contradiction in finding.contradictions
-      )
-  return report
 
 
 def rows(*reports):

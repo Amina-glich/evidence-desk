@@ -1,8 +1,10 @@
 """Page text from an uploaded PDF, using pypdf.
 
-pypdf is imported at module level on purpose: Möbius smoke-runs the service
-module when it builds the app's Python environment, so a missing or broken
-dependency fails the Apply instead of the first tool call.
+pypdf is imported at module level, and ``desk.service`` imports this module
+at module level on purpose: Möbius smoke-runs the service entry when it
+builds the app's Python environment, so a missing or broken dependency fails
+the Apply instead of the first tool call. Nothing else imports it eagerly,
+because the comparison view builder runs without that environment.
 
 Text is stored exactly as extracted; quotation matching normalizes it later
 (see ``evidence``), so the stored page text stays the reference. PDFs are

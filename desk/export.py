@@ -14,6 +14,11 @@ status but says so; the export never presents an unchecked quotation as
 verified. Contradictions are listed side by side, each quotation with its own
 check result, and are never resolved.
 
+The same checked reports also render ``exports/comparison.html``, the
+citation-linked evidence view (see ``viewer``), so the CSV and the view can
+never disagree. ``select_reports`` is the one scope and refusal rule both
+use, and the Project builder of the comparison Creation uses it too.
+
 The export refuses while an in-scope evidence file is invalid, because its
 findings cannot be interpreted. The output is deterministic for the same
 inputs (no timestamps), UTF-8 with a byte order mark for spreadsheet apps,
@@ -27,16 +32,20 @@ from __future__ import annotations
 import csv
 import io
 import json
+from dataclasses import dataclass
 
 from desk import SCHEMA_VERSION
 from desk.binding import ProjectBinding
 from desk.errors import DeskError
-from desk.evidence import VERIFIED, QuoteCheck, SourceReport, check_project, status_of
+from desk.evidence import RESULT_LABELS, VERIFIED, QuoteCheck, SourceReport, check_project, status_of
 from desk.project_fs import SOURCE_ID_RE, Project, project_lock
+from desk.viewer import render_html
 from desk.vocabulary import DIMENSIONS, STATUSES
 
 
 EXPORT_PATH = "exports/comparison.csv"
+VIEW_PATH = "exports/comparison.html"
+QUESTION_MAX_CHARS = 500
 DESK_JSON_MAX_BYTES = 256 * 1024
 # Excel stores at most 32,767 characters in a cell and silently cuts the rest
 # (other spreadsheet apps have similar limits). Stay below it, with room for
@@ -44,13 +53,6 @@ DESK_JSON_MAX_BYTES = 256 * 1024
 MAX_CELL_CHARS = 32_000
 STATUS_LABELS = dict(STATUSES)
 _FORMULA_PREFIXES = ("=", "+", "-", "@", "\t", "\r")
-_RESULT_LABELS = {
-  "wrong_page": "found on a different page",
-  "not_found": "not found in the source text",
-  "page_out_of_range": "page is beyond the end of the PDF",
-  "too_short": "quotation too short to check",
-  "source_unavailable": "source text unavailable",
-}
 
 
 def safe_cell(value: str) -> str:
@@ -58,13 +60,20 @@ def safe_cell(value: str) -> str:
   return "'" + value if value.startswith(_FORMULA_PREFIXES) else value
 
 
-def _scope(project: Project) -> list[str] | None:
-  """Source ids listed in desk.json ``compare_sources``; None means all."""
+@dataclass(frozen=True)
+class Selection:
+  """The checked reports in scope, in desk.json order, and the question."""
+  reports: list[SourceReport]
+  research_question: str | None
+
+
+def _desk(project: Project) -> tuple[list[str] | None, str | None]:
+  """desk.json ``compare_sources`` (None means all) and ``research_question``."""
   try:
     raw = project.read_bytes("desk.json", max_bytes=DESK_JSON_MAX_BYTES)
   except DeskError as exc:
     if exc.code == "not_found":
-      return None
+      return None, None
     raise
   try:
     data = json.loads(raw)
@@ -82,12 +91,14 @@ def _scope(project: Project) -> list[str] | None:
       f'desk.json must have "schema": {SCHEMA_VERSION} and "compare_sources" as a list of source ids like "S1".',
       status=409,
     )
-  return list(dict.fromkeys(scope)) or None
+  question = data.get("research_question")
+  question = question.strip()[:QUESTION_MAX_CHARS] if isinstance(question, str) and question.strip() else None
+  return list(dict.fromkeys(scope)) or None, question
 
 
 def _failure(check: QuoteCheck) -> str:
   return (
-    f"p.{check.page} {_RESULT_LABELS.get(check.result, check.result)}"
+    f"p.{check.page} {RESULT_LABELS.get(check.result, check.result)}"
     + (f" (found on p.{', p.'.join(map(str, check.found_on[:5]))})" if check.found_on else "")
   )
 
@@ -185,44 +196,54 @@ def build_csv(reports: list[SourceReport]) -> bytes:
   return ("﻿" + out.getvalue()).encode("utf-8")
 
 
-def export_comparison(binding: ProjectBinding, _arguments: dict) -> dict:
-  with binding.open() as project:
-    scope = _scope(project)
-    reports = {report.source_id: report for report in check_project(project)}
-    registered = [source_id for source_id, report in reports.items() if report.registered]
-    if not registered:
-      raise DeskError("no_sources", "No sources are registered yet; nothing to export.", status=409)
-    if scope is None:
-      chosen = registered
-    else:
-      unknown = [source_id for source_id in scope if source_id not in registered]
-      if unknown:
-        raise DeskError(
-          "unknown_source",
-          f"desk.json compare_sources names unregistered source(s): {', '.join(unknown)}.",
-          status=409,
-        )
-      chosen = scope
-    selected = [reports[source_id] for source_id in chosen]
-    invalid = [report.source_id for report in selected if report.evidence in ("invalid", "refused")]
-    if invalid:
+def select_reports(project: Project) -> Selection:
+  """Check the project and return the sources in scope, or refuse."""
+  scope, question = _desk(project)
+  reports = {report.source_id: report for report in check_project(project)}
+  registered = [source_id for source_id, report in reports.items() if report.registered]
+  if not registered:
+    raise DeskError("no_sources", "No sources are registered yet; nothing to export.", status=409)
+  if scope is None:
+    chosen = registered
+  else:
+    unknown = [source_id for source_id in scope if source_id not in registered]
+    if unknown:
       raise DeskError(
-        "invalid_evidence",
-        f"Fix the evidence file(s) for {', '.join(invalid)} first; check_evidence lists the problems.",
+        "unknown_source",
+        f"desk.json compare_sources names unregistered source(s): {', '.join(unknown)}.",
         status=409,
       )
-    data = build_csv(selected)
+    chosen = scope
+  selected = [reports[source_id] for source_id in chosen]
+  invalid = [report.source_id for report in selected if report.evidence in ("invalid", "refused")]
+  if invalid:
+    raise DeskError(
+      "invalid_evidence",
+      f"Fix the evidence file(s) for {', '.join(invalid)} first; check_evidence lists the problems.",
+      status=409,
+    )
+  return Selection(selected, question)
+
+
+def export_comparison(binding: ProjectBinding, _arguments: dict) -> dict:
+  with binding.open() as project:
+    selection = select_reports(project)
+    data = build_csv(selection.reports)
+    view = render_html(selection.reports, research_question=selection.research_question).encode("utf-8")
     with project_lock(binding.app_storage_dir, binding.project_id):
       revision = project.write_atomic(EXPORT_PATH, data)
+      view_revision = project.write_atomic(VIEW_PATH, view)
   checks = [
-    check for report in selected for dimension, _label in DIMENSIONS
+    check for report in selection.reports for dimension, _label in DIMENSIONS
     for check in report.all_checks(dimension)
   ]
   verified = sum(check.result == VERIFIED for check in checks)
   return {
     "file": EXPORT_PATH,
-    "sources": chosen,
+    "view": VIEW_PATH,
+    "sources": [report.source_id for report in selection.reports],
     "quotes_verified": verified,
     "quotes_failed": len(checks) - verified,
     "revision": revision,
+    "view_revision": view_revision,
   }

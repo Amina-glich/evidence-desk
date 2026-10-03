@@ -117,7 +117,23 @@ class ManifestTest(unittest.TestCase):
     for action in paper["actions"]:
       self.assertRegex(action["id"], SLUG)
       self.assertLessEqual(len(action["prompt"]), 4000)
-    self.assertNotIn("artifact_types", paper)
+
+  def test_comparison_creation_is_declared_and_packaged(self):
+    paper = template(self.manifest)
+    (artifact_type,) = paper["artifact_types"]
+    self.assertEqual(artifact_type, {
+      "id": "comparison", "name": "Evidence comparison", "extensions": ["json"],
+      "preview": "html", "script": "build.sh", "output": "index.html",
+    })
+    # Möbius runs the script from the installed source, so the builder and
+    # everything it imports must be packaged.
+    for path in ("build.sh", "build_view.py", "desk/viewer.py", "desk/export.py"):
+      self.assertIn(path, self.sources)
+    (preview,) = paper["previews"]
+    self.assertEqual(preview["builder"], artifact_type["id"])
+    # The preview registers at project creation only if its source exists then.
+    self.assertIn(preview["source"], paper["files"])
+    self.assertTrue(preview["source"].endswith(tuple(f".{ext}" for ext in artifact_type["extensions"])))
 
   def test_launcher_resolves_the_template_by_its_local_id(self):
     source = (REPO_ROOT / "index.jsx").read_text(encoding="utf-8")

@@ -12,7 +12,7 @@ page and an exact quotation, so it can be checked against the paper.
 | `evidence/` | The agent | One file per source with findings, page numbers and quotations. |
 | `desk.json` | The agent | The research question and which sources are compared. |
 | `synthesis.md` | The agent | The research brief. |
-| `exports/` | Evidence Desk | The comparison CSV. Regenerated; do not edit. |
+| `exports/` | Evidence Desk | The comparison CSV and comparison view. Regenerated; do not edit. |
 
 ## What the statuses mean
 

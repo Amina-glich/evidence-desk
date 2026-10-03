@@ -12,14 +12,20 @@ import hashlib
 import io
 import json
 import os
+import shutil
+import subprocess
+import tempfile
 import unittest
+from contextlib import redirect_stderr, redirect_stdout
+from pathlib import Path
 from unittest import mock
 
+import build_view
 from desk import service
 from desk.project_fs import project_lock
 from desk.vocabulary import DIMENSIONS
 from tests.pdf_fixtures import make_pdf, paper_pdf
-from tests.support import POSIX, SKIP_REASON, Platform, tool_envelope
+from tests.support import POSIX, REPO_ROOT, SKIP_REASON, Platform, tool_envelope
 
 
 QUOTE_DATA = "We train on the 50,000 CIFAR-10 training images"
@@ -405,6 +411,103 @@ class WorkflowTest(unittest.TestCase):
          mock.patch("desk.export.project_lock", short_wait):
       self.assertEqual(self.call("export_comparison", expect=503)["error"], "busy")
     self.assertFalse((self.root / "exports").exists())
+
+  # The citation-linked comparison view.
+
+  def output_dir(self):
+    path = tempfile.mkdtemp(prefix="evidence-desk-build-")
+    self.addCleanup(shutil.rmtree, path, True)
+    return path
+
+  def build(self, output):
+    stdout, stderr = io.StringIO(), io.StringIO()
+    with redirect_stdout(stdout), redirect_stderr(stderr):
+      code = build_view.main({"PROJECT_ROOT": str(self.root), "PROJECT_OUTPUT_DIR": output})
+    return code, stdout.getvalue(), stderr.getvalue()
+
+  def test_export_also_writes_the_comparison_view(self):
+    self.add()
+    data = good_evidence()
+    data["findings"]["results"]["note"] = "Single run."
+    self.write_evidence(data)
+    reply = self.call("export_comparison")
+    view = (self.root / "exports" / "comparison.html").read_bytes()
+    self.assertEqual(reply["view"], "exports/comparison.html")
+    self.assertEqual(reply["view_revision"], hashlib.sha256(view).hexdigest())
+    text = view.decode("utf-8")
+    self.assertIn(QUOTE_DATA, text)
+    self.assertIn("Single run.", text)
+    self.assertIn("2 of 2 quotations verified", text)
+    self.assertIn("This is an evidence matrix, not a chart.", text)
+
+  def test_creation_builder_matches_the_exported_view(self):
+    self.add()
+    (self.root / "inbox" / "other.pdf").write_bytes(make_pdf([["Second paper with other content"]]))
+    self.add("inbox/other.pdf")
+    self.write_evidence(good_evidence())
+    desk = {"schema": 1, "research_question": "Which is faster?", "compare_sources": ["S2", "S1"]}
+    (self.root / "desk.json").write_text(json.dumps(desk))
+    self.call("export_comparison")
+    output = self.output_dir()
+    code, stdout, stderr = self.build(output)
+    self.assertEqual((code, stderr), (0, ""))
+    self.assertIn("for 2 source(s)", stdout)
+    built = (Path(output) / "index.html").read_bytes()
+    self.assertEqual(built, (self.root / "exports" / "comparison.html").read_bytes())
+    # desk.json order and question are honored.
+    text = built.decode("utf-8")
+    self.assertLess(text.index('id="f-data-S2"'), text.index('id="f-data-S1"'))
+    self.assertIn("Which is faster?", text)
+
+  def test_creation_builder_writes_nothing_into_the_project(self):
+    self.add()
+    self.write_evidence(good_evidence())
+    before = sorted(str(path) for path in self.root.rglob("*"))
+    self.assertEqual(self.build(self.output_dir())[0], 0)
+    self.assertEqual(sorted(str(path) for path in self.root.rglob("*")), before)
+
+  def test_build_script_runs_end_to_end(self):
+    self.add()
+    self.write_evidence(good_evidence())
+    output = self.output_dir()
+    env = {
+      "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
+      "PROJECT_ROOT": str(self.root),
+      "PROJECT_SOURCE": "desk.json",
+      "PROJECT_OUTPUT_DIR": output,
+      "PROJECT_ARTIFACT_ID": "comparison",
+    }
+    completed = subprocess.run(
+      ["bash", str(REPO_ROOT / "build.sh")], cwd=self.root, env=env,
+      capture_output=True, text=True, timeout=120, check=False,
+    )
+    self.assertEqual(completed.returncode, 0, completed.stderr)
+    self.assertIn("Built the evidence comparison for 1 source(s).", completed.stdout)
+    self.assertIn(QUOTE_DATA, (Path(output) / "index.html").read_text(encoding="utf-8"))
+
+  def test_creation_builder_refuses_like_the_export(self):
+    output = self.output_dir()
+    code, _stdout, stderr = self.build(output)
+    self.assertEqual(code, 1)
+    self.assertIn("No sources are registered yet", stderr)
+    self.add()
+    self.write_evidence({"schema": 1, "source": "S1", "findings": {"data": {"status": "maybe"}}})
+    code, _stdout, stderr = self.build(output)
+    self.assertEqual(code, 1)
+    self.assertIn("Fix the evidence file(s) for S1 first", stderr)
+    self.assertEqual(os.listdir(output), [])
+
+  def test_creation_builder_never_follows_symlinks_out_of_the_project(self):
+    self.add()
+    outside = self.platform.data_root / "outside"
+    outside.mkdir()
+    (outside / "S1.json").write_text(json.dumps(good_evidence()))
+    os.symlink(outside, self.root / "evidence")
+    output = self.output_dir()
+    code, _stdout, stderr = self.build(output)
+    self.assertEqual(code, 1)
+    self.assertIn("symlink", stderr)
+    self.assertEqual(os.listdir(output), [])
 
 
 if __name__ == "__main__":
