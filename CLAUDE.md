@@ -76,6 +76,12 @@ app environment, so the builder's import chain must not need pypdf
 for the Apply smoke run; `tests/test_build_view.py` enforces this). Artifact
 types come from the template snapshot taken at project creation, so older
 projects never get the Creation.
+0.4.1: Möbius shows both the file preview and Creations as an `srcdoc`
+frame whose base URL is the Möbius page (CSP `base-uri 'none'`), so a plain
+`href="#id"` navigated the frame to Möbius sign-in (reproduced in hosted
+Möbius). `viewer.NAV_SCRIPT`, a fixed script with no data, network or
+parent access, handles in-page link clicks; keep every internal href a
+plain `#id` (tested).
 The manifest passes the platform's `validate_manifest_contract`, and
 `validate-app.py` passes with the exact Möbius compiler (`index.jsx`
 compiles with Rolldown 1.2.11).

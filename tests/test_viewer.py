@@ -10,13 +10,13 @@ import re
 import unittest
 from html.parser import HTMLParser
 
-from desk.viewer import render_html
+from desk.viewer import NAV_SCRIPT, render_html
 from desk.vocabulary import DIMENSIONS
 from tests.reports import QUOTE_DATA, QUOTE_RESULT, REPORTED, report_for
 
 
 class Page(HTMLParser):
-  """Collects ids, internal links, tags and the text inside each element id."""
+  """Collects ids, internal links, tags, script bodies and the text inside each element id."""
 
   def __init__(self, html: str):
     super().__init__(convert_charrefs=True)
@@ -25,6 +25,7 @@ class Page(HTMLParser):
     self.tags: set[str] = set()
     self.attributes: list[tuple[str, str]] = []
     self.text_by_id: dict[str, str] = {}
+    self.scripts: list[str] = []
     self._open: list[tuple[str, str | None]] = []
     self._link: str | None = None
     self._link_text: list[str] = []
@@ -42,6 +43,8 @@ class Page(HTMLParser):
       self._open.append((tag, element_id))
     if tag == "a" and (attrs.get("href") or "").startswith("#"):
       self._link, self._link_text = attrs["href"][1:], []
+    if tag == "script":
+      self.scripts.append("")
 
   def handle_endtag(self, tag):
     if tag == "a" and self._link is not None:
@@ -53,6 +56,9 @@ class Page(HTMLParser):
         break
 
   def handle_data(self, data):
+    if self._open and self._open[-1][0] == "script":
+      self.scripts[-1] += data
+      return
     if self._link is not None:
       self._link_text.append(data)
     for _tag, element_id in self._open:
@@ -174,6 +180,54 @@ class ContentTest(unittest.TestCase):
     self.assertLess(html.index('id="f-data-S2"'), html.index('id="f-data-S1"'))
 
 
+class InPageNavigationTest(unittest.TestCase):
+  """Citation links must stay inside the page in Möbius's srcdoc preview frame.
+
+  There, a plain href="#id" resolves against the Möbius page's URL and
+  navigates the frame away (to sign-in, then blocked content). NAV_SCRIPT
+  handles those clicks within the document; plain anchors remain for a
+  downloaded file.
+  """
+
+  def setUp(self):
+    self.html = render_html(two_sources(), research_question=None)
+    self.page = Page(self.html)
+
+  def test_every_internal_link_is_a_plain_id_the_script_can_resolve(self):
+    # The script looks targets up by the text after "#", undecoded.
+    targets = [target for target, _text in self.page.links]
+    self.assertTrue(targets)
+    for target in targets:
+      self.assertRegex(target, r"^[A-Za-z0-9_-]+$")
+      self.assertIn(target, self.page.ids)
+
+  def test_script_cancels_in_page_navigation_and_moves_to_the_target(self):
+    script = NAV_SCRIPT
+    self.assertIn('document.addEventListener("click"', script)
+    self.assertIn("closest('a[href^=\"#\"]')", script)
+    self.assertIn('document.getElementById(link.getAttribute("href").slice(1))', script)
+    # Cancel only when the target exists in this page, so nothing else breaks.
+    self.assertLess(script.index("if (!target) return;"), script.index("event.preventDefault();"))
+    for step in ('classList.add("is-target")', 'setAttribute("tabindex", "-1")',
+                 "scrollIntoView(", "focus({ preventScroll: true })"):
+      self.assertIn(step, script)
+    # The highlight replaces :target, which never applies after a cancelled click.
+    self.assertIn(".card.is-target, li.is-target", self.html)
+
+  def test_script_reaches_nothing_outside_the_page(self):
+    for forbidden in ("fetch", "XMLHttpRequest", "WebSocket", "location", "history", "Storage",
+                      "cookie", "eval", "Function(", "innerHTML", "parent", "top.", "opener",
+                      "postMessage", "window.open", "import(", "src", "http"):
+      with self.subTest(forbidden=forbidden):
+        self.assertNotIn(forbidden, NAV_SCRIPT)
+
+  def test_script_is_the_same_for_every_page(self):
+    other = Page(render_html([report_for({"data": REPORTED})], research_question="Other question"))
+    self.assertEqual(other.scripts, self.page.scripts)
+    self.assertEqual(self.page.scripts, [NAV_SCRIPT])
+    self.assertNotIn("</script", NAV_SCRIPT.lower())
+
+
 class SafetyTest(unittest.TestCase):
 
   HOSTILE = '<script>alert(1)</script><img src=x onerror=alert(2)>" onmouseover="x'
@@ -193,7 +247,8 @@ class SafetyTest(unittest.TestCase):
     }, title=hostile)
     html = render_html([report], research_question=hostile)
     page = Page(html)
-    self.assertNotIn("script", page.tags)
+    # The only script is the fixed navigation script; recorded text adds none.
+    self.assertEqual(page.scripts, [NAV_SCRIPT])
     self.assertNotIn("img", page.tags)
     self.assertFalse([name for name, _value in page.attributes if name.startswith("on")])
     self.assertIn("&lt;script&gt;", html)
@@ -201,7 +256,8 @@ class SafetyTest(unittest.TestCase):
   def test_page_is_self_contained_and_draws_no_chart(self):
     html = render_html(two_sources(), research_question=None)
     page = Page(html)
-    self.assertFalse({"script", "svg", "canvas", "iframe", "img", "link", "object"} & page.tags)
+    self.assertFalse({"svg", "canvas", "iframe", "img", "link", "object"} & page.tags)
+    self.assertEqual(page.scripts, [NAV_SCRIPT])
     self.assertNotIn("http://", html)
     self.assertNotIn("https://", html)
     self.assertFalse([value for name, value in page.attributes if name in ("src", "srcset")])

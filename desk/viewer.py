@@ -12,10 +12,17 @@ colors always come with text, and nothing is resolved or ranked: notes,
 checked absences and contradictions (with every side quoted and checked) are
 shown as recorded.
 
-The page has no scripts and loads nothing remote, so it works as a sandboxed
-Möbius Creation and as a downloaded file. Every value from evidence files,
-page text or PDF metadata is HTML-escaped; anchor ids are built only from
-source ids, dimension ids and counters. Output is deterministic.
+The page loads nothing remote, so it works as a sandboxed Möbius Creation,
+in the Möbius file preview, and as a downloaded file. Its one script,
+``NAV_SCRIPT``, is a fixed constant that never contains evidence: Möbius
+shows the page as an ``srcdoc`` frame, whose base URL is the Möbius page
+itself, so a plain ``href="#..."`` link would navigate the frame to Möbius
+instead of scrolling. The script keeps such clicks inside the page. Without
+scripts the links remain ordinary anchors, which work in a downloaded file.
+
+Every value from evidence files, page text or PDF metadata is HTML-escaped;
+anchor ids are built only from source ids, dimension ids and counters.
+Output is deterministic.
 """
 
 from __future__ import annotations
@@ -89,7 +96,7 @@ table.overview { border-collapse: collapse; min-width: 100%; }
 .flag-warn { color: var(--ed-warn); font-weight: 600; }
 .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; }
 .card { border: 1px solid var(--ed-border); border-radius: 8px; padding: 12px 14px; background: var(--ed-bg); }
-.card:target, li:target { outline: 2px solid var(--ed-accent); outline-offset: 2px; }
+.card:target, li:target, .card.is-target, li.is-target { outline: 2px solid var(--ed-accent); outline-offset: 2px; }
 .card h4 { margin: 0 0 8px; font-size: 0.95rem; display: flex; gap: 8px; justify-content: space-between; align-items: baseline; }
 .value { margin: 6px 0; }
 .cite { white-space: nowrap; font-size: 0.85rem; }
@@ -103,6 +110,25 @@ blockquote { margin: 6px 0; padding: 6px 12px; border-left: 3px solid var(--ed-b
 .check-ok { color: var(--ed-ok); font-weight: 600; }
 .check-bad { color: var(--ed-bad); font-weight: 600; }
 footer { margin-top: 40px; font-size: 0.85rem; color: var(--ed-muted); }
+"""
+
+
+# In-page navigation for an srcdoc frame (see the module docstring). It only
+# moves within this document: no network, storage, history or parent access.
+NAV_SCRIPT = """
+document.addEventListener("click", function (event) {
+  var link = event.target.closest ? event.target.closest('a[href^="#"]') : null;
+  if (!link) return;
+  var target = document.getElementById(link.getAttribute("href").slice(1));
+  if (!target) return;
+  event.preventDefault();
+  var previous = document.querySelector(".is-target");
+  if (previous) previous.classList.remove("is-target");
+  target.classList.add("is-target");
+  if (!target.hasAttribute("tabindex")) target.setAttribute("tabindex", "-1");
+  target.scrollIntoView({ block: "start" });
+  target.focus({ preventScroll: true });
+});
 """
 
 
@@ -311,5 +337,5 @@ def render_html(reports: list[SourceReport], *, research_question: str | None) -
     "<footer>Built by Evidence Desk from the project's evidence files. Statuses: "
     "Reported = supported by a page and exact quotation; Not reported = checked in the "
     "available source material and absent; Not assessed = not checked yet.</footer>"
-    "</main></body></html>\n"
+    f"</main><script>{NAV_SCRIPT}</script></body></html>\n"
   )

@@ -22,8 +22,10 @@ by side, and every quotation with its source, PDF page and check result.
 Citations link to their quotation and back. It never plots values across
 papers, because Evidence Desk cannot verify that metrics, datasets and
 experimental settings are comparable, and it says so on the page. The page
-is self-contained (no scripts, nothing remote) and every recorded text is
-HTML-escaped.
+is self-contained (nothing remote) and every recorded text is HTML-escaped.
+Its one fixed script keeps citation links inside the page: Möbius previews
+HTML in an `srcdoc` frame, where a plain `#` link would navigate the frame
+to Möbius itself. Without scripts the links work as ordinary anchors.
 
 It is produced two ways from the same renderer and the same checked
 evidence: `export_comparison` writes `exports/comparison.html` in every
