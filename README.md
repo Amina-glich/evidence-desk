@@ -4,25 +4,41 @@ A Möbius Project app for comparing AI/ML research papers with source-grounded
 evidence: every extracted value points to a source, page and exact quote, and
 missing information is labelled “Not reported” instead of guessed.
 
-**Status: 0.4.0.** The app has a manifest, a launcher, a Project template
+**Status: 0.5.0.** The app has a manifest, a launcher, a Project template
 with agent guidance, a service with four agent tools — `project_status`,
 `add_source` (register an uploaded PDF and extract its page text with
 pypdf), `check_evidence` (deterministic quotation checking) and
 `export_comparison` (comparison CSV and view) — and a citation-linked
-**Evidence comparison** Creation. Version 0.3.0 was tested end to end in a
-hosted Möbius instance; the 0.4.0 comparison view has not been installed
+**Evidence comparison** Creation. Version 0.4.1 was tested end to end in a
+hosted Möbius instance (two papers, citation navigation in the Möbius
+preview). 0.5.0 adds structured measurements and has not been installed
 yet. Online paper lookup (arXiv, DOI) is not implemented yet.
 
 ## Comparison view
 
-An evidence matrix, not a chart: an overview of Reported / Not reported /
-Not assessed per dimension and source (with markers for notes, checked
-absences, contradictions and failed checks), each dimension's findings side
-by side, and every quotation with its source, PDF page and check result.
-Citations link to their quotation and back. It never plots values across
-papers, because Evidence Desk cannot verify that metrics, datasets and
-experimental settings are comparable, and it says so on the page. The page
-is self-contained (nothing remote) and every recorded text is HTML-escaped.
+An evidence matrix: an overview of Reported / Not reported / Not assessed
+per dimension and source (with markers for notes, checked absences,
+contradictions and failed checks), each dimension's findings side by side,
+a **Reported measurements** section, and every quotation with its source,
+PDF page and check result. Citations link to their quotation and back.
+
+Reported measurements lists every structured measurement (optional, in the
+evidence files) with its value, compatibility fields and a status: "Plotted
+in chart N" or the reason it was not compared. Each value and field links
+to the quotation that backs it. A dot plot is drawn only when at least two
+sources report the same task, dataset, split, metric, metric definition and
+model variant (and hardware for speed or training cost), every field backed
+by a verified quotation, nothing unknown, no source reporting conflicting
+values for that combination (checked across all of its measurements, an
+unknown field counting as possibly the same), and no value taken from a
+contradiction recorded in the same source and dimension
+(`desk/measurements.py`, rules P1-P6 and evidence checks V1-V6, including
+percent signs that must agree between unit and quotation). Each plotted
+point links to the verified quotation that shows its value. Plots never
+rank values and say they are not controlled experiments.
+
+The page is self-contained (nothing remote) and every recorded text is
+HTML-escaped.
 Its one fixed script keeps citation links inside the page: Möbius previews
 HTML in an `srcdoc` frame, where a plain `#` link would navigate the frame
 to Möbius itself. Without scripts the links work as ordinary anchors.
@@ -64,6 +80,7 @@ the exported file.
 | `desk/pdf_text.py` | Bounded pypdf extraction; refuses non-PDF, damaged, encrypted, oversized and text-less (scanned) files. |
 | `desk/evidence.py` | Strict validation of `evidence/S<n>.json` (findings plus optional notes, checked absences and quote-backed contradictions); `check_evidence` matches each quotation, including both sides of every contradiction, on its cited page after a fixed normalization of PDF artefacts. No fuzzy matching. |
 | `desk/export.py` | `export_comparison`: `exports/comparison.html` (see `desk/viewer.py`) and a deterministic, formula-safe `exports/comparison.csv` with the service's own check per finding; the original 27 columns keep their positions and each finding's note, checked absences and contradictions follow in appended columns. Refuses a cell over 32,000 characters instead of letting spreadsheet software cut it. |
+| `desk/measurements.py` | Pure comparability rules: evidence checks for measurements (number in its quotation, field words in theirs, unit, no differences or ratios, hardware for speed and cost), the compatibility key, and which values may share a plot. |
 | `desk/viewer.py` | The comparison view: one self-contained, escaped, deterministic HTML page from checked reports. |
 | `desk/status.py` | `project_status`: the bound project's name, id and area contents. Never lists other projects or follows symlinks. |
 | `desk/binding.py` | Derives the one Project a tool call may act on from the platform-set `call.chat_id` (following helper chats to their project chat), never from model-written arguments. Requires a live project created by this app at `<data root>/projects/<id>`. Fails closed on any doubt. |

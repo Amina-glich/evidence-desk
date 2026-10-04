@@ -233,10 +233,7 @@ def export_comparison(binding: ProjectBinding, _arguments: dict) -> dict:
     with project_lock(binding.app_storage_dir, binding.project_id):
       revision = project.write_atomic(EXPORT_PATH, data)
       view_revision = project.write_atomic(VIEW_PATH, view)
-  checks = [
-    check for report in selection.reports for dimension, _label in DIMENSIONS
-    for check in report.all_checks(dimension)
-  ]
+  checks = [check for report in selection.reports for check in report.quote_checks()]
   verified = sum(check.result == VERIFIED for check in checks)
   return {
     "file": EXPORT_PATH,

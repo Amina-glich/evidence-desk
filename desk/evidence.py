@@ -44,6 +44,18 @@ MAX_EVIDENCE_FILES = 500
 MAX_QUOTES_PER_FINDING = 20
 MAX_ABSENCES_PER_FINDING = 20
 MAX_CONTRADICTIONS_PER_FINDING = 10
+MAX_MEASUREMENTS = 100
+MAX_LABEL_CHARS = 200
+MAX_VALUE_TEXT_CHARS = 40
+
+# Structured measurements (see ``measurements``): every compatibility field is
+# required, either backed by a quotation or explicitly unknown.
+MEASUREMENT_FIELDS = ("task", "dataset", "split", "metric", "metric_definition", "variant")
+HARDWARE_FIELD = "hardware"
+METRIC_KINDS = ("quality", "speed", "training_cost", "other")
+_MEASUREMENT_KEYS = (
+  {"dimension", "metric_kind", "value_text", "unit", "evidence", "fields"}, {"setting"},
+)
 MIN_QUOTE_CHARS = 10
 MAX_QUOTE_CHARS = 1000
 MAX_TEXT_CHARS = 2000
@@ -149,6 +161,37 @@ class Finding:
 
 
 @dataclass(frozen=True)
+class FieldEvidence:
+  """One compatibility field of a measurement.
+
+  Either ``label`` with the words ``as_written`` in the source, quoted by
+  ``quote`` (or, when ``quote`` is None, by the measurement's own value
+  quotation), or ``unknown`` with the reason the source does not state it.
+  """
+  label: str | None = None
+  as_written: str | None = None
+  quote: Quote | None = None
+  unknown: str | None = None
+
+
+@dataclass(frozen=True)
+class Measurement:
+  dimension: str
+  metric_kind: str
+  value_text: str
+  unit: str
+  evidence: tuple[Quote, ...]
+  fields: dict[str, FieldEvidence]
+  setting: str | None = None
+
+
+@dataclass(frozen=True)
+class ParsedEvidence:
+  findings: dict[str, Finding]
+  measurements: tuple[Measurement, ...] = ()
+
+
+@dataclass(frozen=True)
 class QuoteCheck:
   page: int
   quote: str
@@ -156,6 +199,14 @@ class QuoteCheck:
   # "exact" or "normalized" for a verified quote.
   match: str | None = None
   found_on: tuple[int, ...] = ()
+
+
+@dataclass(frozen=True)
+class MeasurementCheck:
+  """Quote checks of one measurement: its value quotations, and each field
+  that has its own quotation."""
+  value: tuple[QuoteCheck, ...]
+  fields: dict[str, QuoteCheck]
 
 
 def _text(value: object, *, max_chars: int = MAX_TEXT_CHARS) -> str | None:
@@ -231,8 +282,95 @@ def _parse_contradictions(items: object, where: str, problems: list[str]) -> tup
   return tuple(contradictions) if len(contradictions) == len(items) else None
 
 
+def _parse_field(item: object, at: str, problems: list[str]) -> FieldEvidence | None:
+  if isinstance(item, dict) and set(item) == {"unknown"}:
+    reason = _text(item["unknown"])
+    if reason is None:
+      problems.append(f"{at}.unknown: say why the source does not state it.")
+      return None
+    return FieldEvidence(unknown=reason)
+  if not isinstance(item, dict) or set(item) not in (
+    {"label", "as_written"}, {"label", "as_written", "page", "quote"},
+  ):
+    problems.append(
+      f'{at}: needs "label" and "as_written" (optionally "page" and "quote"), '
+      'or {"unknown": reason}.'
+    )
+    return None
+  label = _text(item["label"], max_chars=MAX_LABEL_CHARS)
+  as_written = _text(item["as_written"], max_chars=MAX_LABEL_CHARS)
+  if label is None or as_written is None:
+    problems.append(f'{at}: "label" and "as_written" must be text of at most {MAX_LABEL_CHARS} characters.')
+    return None
+  quote = None
+  if "quote" in item:
+    quotes = _parse_quotes([{"page": item["page"], "quote": item["quote"]}], at, problems, minimum=1)
+    if quotes is None:
+      return None
+    quote = quotes[0]
+  return FieldEvidence(label=label, as_written=as_written, quote=quote)
+
+
+def _parse_measurements(items: object, problems: list[str]) -> tuple[Measurement, ...] | None:
+  if not isinstance(items, list) or len(items) > MAX_MEASUREMENTS:
+    problems.append(f'"measurements" must be a list of at most {MAX_MEASUREMENTS} items.')
+    return None
+  measurements = []
+  for index, item in enumerate(items):
+    at = f"measurements[{index}]"
+    required, optional = _MEASUREMENT_KEYS
+    if not isinstance(item, dict) or not required <= set(item) or set(item) - required - optional:
+      keys = ", ".join(sorted(required))
+      problems.append(f"{at}: needs exactly {keys} (and optionally setting).")
+      continue
+    count = len(problems)
+    if item["dimension"] not in DIMENSION_IDS:
+      problems.append(f"{at}.dimension: use one of {', '.join(DIMENSION_IDS)}.")
+    if item["metric_kind"] not in METRIC_KINDS:
+      problems.append(f"{at}.metric_kind: use one of {', '.join(METRIC_KINDS)}.")
+    value_text = _text(item["value_text"], max_chars=MAX_VALUE_TEXT_CHARS)
+    if value_text is None:
+      problems.append(f"{at}.value_text: the number exactly as the source writes it.")
+    unit = _text(item["unit"], max_chars=MAX_VALUE_TEXT_CHARS)
+    if unit is None:
+      problems.append(f"{at}.unit: needs a unit, such as BLEU, % or ms.")
+    setting = None
+    if "setting" in item:
+      setting = _text(item["setting"])
+      if setting is None:
+        problems.append(f"{at}.setting: must be non-empty text of at most {MAX_TEXT_CHARS} characters.")
+    quotes = _parse_quotes(item["evidence"], f"{at}.evidence", problems, minimum=1)
+    fields = {}
+    raw_fields = item["fields"]
+    if not isinstance(raw_fields, dict):
+      problems.append(f"{at}.fields: must be an object keyed by field name.")
+    else:
+      allowed = set(MEASUREMENT_FIELDS) | {HARDWARE_FIELD}
+      for name in sorted(set(raw_fields) - allowed):
+        problems.append(f"{at}.fields.{name}: unknown field; use {', '.join(MEASUREMENT_FIELDS)} or {HARDWARE_FIELD}.")
+      for name in MEASUREMENT_FIELDS:
+        if name not in raw_fields:
+          problems.append(f'{at}.fields.{name}: required; use {{"unknown": reason}} if the source does not state it.')
+      for name in [name for name in (*MEASUREMENT_FIELDS, HARDWARE_FIELD) if name in raw_fields]:
+        parsed = _parse_field(raw_fields[name], f"{at}.fields.{name}", problems)
+        if parsed is not None:
+          fields[name] = parsed
+    if len(problems) == count:
+      measurements.append(Measurement(
+        dimension=item["dimension"], metric_kind=item["metric_kind"], value_text=value_text,
+        unit=unit, evidence=quotes, fields=fields, setting=setting,
+      ))
+  return tuple(measurements) if len(measurements) == len(items) else None
+
+
 def parse_evidence(raw: bytes, source_id: str) -> tuple[dict[str, Finding] | None, list[str]]:
   """Findings by dimension id, or None and the reasons the file is invalid."""
+  parsed, problems = parse_evidence_file(raw, source_id)
+  return (None if parsed is None else parsed.findings), problems
+
+
+def parse_evidence_file(raw: bytes, source_id: str) -> tuple[ParsedEvidence | None, list[str]]:
+  """Findings and measurements, or None and the reasons the file is invalid."""
   try:
     data = json.loads(raw)
   except (ValueError, RecursionError):
@@ -240,7 +378,7 @@ def parse_evidence(raw: bytes, source_id: str) -> tuple[dict[str, Finding] | Non
   if not isinstance(data, dict):
     return None, ["The file must contain a JSON object."]
   problems = []
-  unknown = sorted(set(data) - {"schema", "source", "findings"})
+  unknown = sorted(set(data) - {"schema", "source", "findings", "measurements"})
   if unknown:
     problems.append(f"Unknown top-level key(s): {', '.join(unknown)}.")
   if data.get("schema") != SCHEMA_VERSION:
@@ -297,7 +435,12 @@ def parse_evidence(raw: bytes, source_id: str) -> tuple[dict[str, Finding] | Non
         findings[dimension] = Finding(status, checked=checked, note=note)
     else:
       findings[dimension] = Finding(status, note=note)
-  return (None, problems) if problems else (findings, [])
+  measurements = ()
+  if "measurements" in data:
+    measurements = _parse_measurements(data["measurements"], problems)
+  if problems:
+    return None, problems
+  return ParsedEvidence(findings, measurements), []
 
 
 def check_quote(quote: Quote, pages: tuple[tuple[str, ...], ...], raw_pages: tuple[str, ...]) -> QuoteCheck:
@@ -336,6 +479,9 @@ class SourceReport:
   checks: dict[str, tuple[QuoteCheck, ...]] = field(default_factory=dict)
   # Per contradiction, its quote checks, in the order of Finding.contradictions.
   contradiction_checks: dict[str, tuple[tuple[QuoteCheck, ...], ...]] = field(default_factory=dict)
+  measurements: tuple[Measurement, ...] = ()
+  # One per measurement, in the same order.
+  measurement_checks: tuple[MeasurementCheck, ...] = ()
   problems: list[str] = field(default_factory=list)
 
   def all_checks(self, dimension: str) -> tuple[QuoteCheck, ...]:
@@ -343,6 +489,41 @@ class SourceReport:
     return self.checks.get(dimension, ()) + tuple(
       check for checks in self.contradiction_checks.get(dimension, ()) for check in checks
     )
+
+  def measurement_quote_checks(self) -> tuple[QuoteCheck, ...]:
+    """Every quotation check of every measurement: values, then own field quotes."""
+    return tuple(
+      check for checks in self.measurement_checks
+      for check in (*checks.value, *checks.fields.values())
+    )
+
+  def quote_checks(self) -> tuple[QuoteCheck, ...]:
+    """Every quotation check of this source."""
+    return tuple(
+      check for dimension in DIMENSION_IDS for check in self.all_checks(dimension)
+    ) + self.measurement_quote_checks()
+
+
+def check_report_quotes(report: SourceReport, check) -> None:
+  """Fill a report's quote checks; ``check`` maps a Quote to its QuoteCheck."""
+  for dimension, finding in report.findings.items():
+    if finding.evidence:
+      report.checks[dimension] = tuple(check(quote) for quote in finding.evidence)
+    if finding.contradictions:
+      report.contradiction_checks[dimension] = tuple(
+        tuple(check(quote) for quote in contradiction.evidence)
+        for contradiction in finding.contradictions
+      )
+  report.measurement_checks = tuple(
+    MeasurementCheck(
+      value=tuple(check(quote) for quote in measurement.evidence),
+      fields={
+        name: check(evidence.quote)
+        for name, evidence in measurement.fields.items() if evidence.quote is not None
+      },
+    )
+    for measurement in report.measurements
+  )
 
 
 def _evidence_files(project: Project) -> list[str]:
@@ -389,27 +570,21 @@ def check_project(project: Project) -> list[SourceReport]:
         report.evidence = "refused"
         report.problems.append(f"evidence/{source_id}.json could not be read: {exc.message}")
       else:
-        findings, problems = parse_evidence(raw, source_id)
-        if findings is None:
+        parsed, problems = parse_evidence_file(raw, source_id)
+        if parsed is None:
           report.evidence = "invalid"
           report.problems.extend(f"evidence/{source_id}.json: {problem}" for problem in problems)
         else:
           report.evidence = "valid"
-          report.findings = findings
-    if report.findings:
+          report.findings = parsed.findings
+          report.measurements = parsed.measurements
+    if report.findings or report.measurements:
       if source is not None:
         variants = tuple(page_variants(text) for text in source.pages)
         check = lambda quote: check_quote(quote, variants, source.pages)
       else:
         check = lambda quote: QuoteCheck(quote.page, quote.quote, SOURCE_UNAVAILABLE)
-      for dimension, finding in report.findings.items():
-        if finding.evidence:
-          report.checks[dimension] = tuple(check(quote) for quote in finding.evidence)
-        if finding.contradictions:
-          report.contradiction_checks[dimension] = tuple(
-            tuple(check(quote) for quote in contradiction.evidence)
-            for contradiction in finding.contradictions
-          )
+      check_report_quotes(report, check)
     reports.append(report)
   return reports
 
@@ -425,6 +600,9 @@ def _short(text: str) -> str:
 
 def check_evidence(binding: ProjectBinding, _arguments: dict) -> dict:
   """The ``check_evidence`` tool: a bounded report, writing nothing."""
+  # measurements builds on this module, so it is imported where it is used.
+  from desk.measurements import assess
+
   with binding.open() as project:
     reports = check_project(project)
   sources, problems = [], []
@@ -452,6 +630,26 @@ def check_evidence(binding: ProjectBinding, _arguments: dict) -> dict:
         if check.found_on:
           problem["found_on"] = list(check.found_on[:20])
         problems.append(problem)
+    for item in assess(report):
+      quote_checks = (*item.checks.value, *item.checks.fields.values())
+      for check in quote_checks:
+        if check.result == VERIFIED:
+          verified += 1
+          continue
+        failed += 1
+        problem = {
+          "source": report.source_id, "part": "measurement", "measurement": item.index + 1,
+          "page": check.page, "result": check.result, "quote": _short(check.quote),
+        }
+        if check.found_on:
+          problem["found_on"] = list(check.found_on[:20])
+        problems.append(problem)
+      # Quotation failures are reported above; these are the other V2-V6 problems.
+      problems.extend(
+        {"source": report.source_id, "part": "measurement", "measurement": item.index + 1,
+         "problem": code, "detail": reason}
+        for code, reason in item.problems if not code.startswith("quote_not_verified")
+      )
     problems.extend({"source": report.source_id, "problem": text} for text in report.problems)
     totals["quotes"] += verified + failed
     totals["verified"] += verified
@@ -464,6 +662,7 @@ def check_evidence(binding: ProjectBinding, _arguments: dict) -> dict:
       **counts,
       "absences": sum(len(finding.absences) for finding in report.findings.values()),
       "contradictions": sum(len(finding.contradictions) for finding in report.findings.values()),
+      "measurements": len(report.measurements),
       "quotes_verified": verified,
       "quotes_failed": failed,
     })

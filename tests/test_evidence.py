@@ -6,8 +6,8 @@ import json
 import unittest
 
 from desk.evidence import (
-  NOT_FOUND, PAGE_OUT_OF_RANGE, TOO_SHORT, VERIFIED, WRONG_PAGE, Absence, Contradiction, Quote,
-  check_quote, normalize_quote, page_variants, parse_evidence,
+  NOT_FOUND, PAGE_OUT_OF_RANGE, TOO_SHORT, VERIFIED, WRONG_PAGE, Absence, Contradiction, FieldEvidence,
+  Quote, check_quote, normalize_quote, page_variants, parse_evidence, parse_evidence_file,
 )
 from tests.pdf_fixtures import PAPER_PAGES
 
@@ -188,6 +188,78 @@ class ParseEvidenceTest(unittest.TestCase):
     self.assertInvalid(evidence({"task": {
       "status": "not_assessed", "contradictions": [one_sided],
     }}), "not_assessed does not take contradictions")
+
+
+MEASUREMENT = {
+  "dimension": "results",
+  "metric_kind": "quality",
+  "value_text": "91.2%",
+  "unit": "%",
+  "evidence": [{"page": 3, "quote": "Our model reaches 91.2% top-1 accuracy"}],
+  "fields": {
+    "task": {"label": "Image classification", "as_written": "Our model"},
+    "dataset": {"label": "CIFAR-10", "as_written": "CIFAR-10", "page": 2,
+                "quote": "We train on the 50,000 CIFAR-10 training images"},
+    "split": {"unknown": "The test split is not named next to this value."},
+    "metric": {"label": "Top-1 accuracy", "as_written": "top-1 accuracy"},
+    "metric_definition": {"unknown": "Not stated."},
+    "variant": {"unknown": "Not stated."},
+  },
+}
+
+
+class MeasurementSchemaTest(unittest.TestCase):
+
+  def assertInvalid(self, measurements, fragment):
+    parsed, problems = parse_evidence_file(evidence({}, measurements=measurements), "S1")
+    self.assertIsNone(parsed)
+    self.assertTrue(any(fragment in problem for problem in problems), problems)
+
+  def test_files_without_measurements_parse_as_before(self):
+    raw = evidence({"data": REPORTED})
+    parsed, problems = parse_evidence_file(raw, "S1")
+    self.assertEqual(problems, [])
+    self.assertEqual(parsed.measurements, ())
+    self.assertEqual(parse_evidence(raw, "S1")[0], parsed.findings)
+    self.assertEqual(parse_evidence_file(evidence({}, measurements=[]), "S1")[0].measurements, ())
+
+  def test_a_valid_measurement_keeps_every_field_and_quote(self):
+    parsed, problems = parse_evidence_file(evidence({}, measurements=[{**MEASUREMENT, "setting": "One run."}]), "S1")
+    self.assertEqual(problems, [])
+    (measurement,) = parsed.measurements
+    self.assertEqual((measurement.value_text, measurement.unit, measurement.setting), ("91.2%", "%", "One run."))
+    self.assertEqual(measurement.evidence, (Quote(3, "Our model reaches 91.2% top-1 accuracy"),))
+    self.assertEqual(measurement.fields["task"], FieldEvidence(label="Image classification", as_written="Our model"))
+    self.assertEqual(measurement.fields["dataset"].quote, Quote(2, "We train on the 50,000 CIFAR-10 training images"))
+    self.assertEqual(measurement.fields["split"].unknown, "The test split is not named next to this value.")
+    self.assertNotIn("hardware", measurement.fields)
+
+  def test_every_compatibility_field_is_required(self):
+    for name in ("task", "dataset", "split", "metric", "metric_definition", "variant"):
+      with self.subTest(field=name):
+        fields = {key: value for key, value in MEASUREMENT["fields"].items() if key != name}
+        self.assertInvalid([{**MEASUREMENT, "fields": fields}], f'fields.{name}: required; use {{"unknown": reason}}')
+
+  def test_structural_mistakes_invalidate_the_file(self):
+    fields = MEASUREMENT["fields"]
+    cases = {
+      '"measurements" must be a list': "all",
+      "needs exactly dimension, evidence, fields, metric_kind, unit, value_text": [{**MEASUREMENT, "confidence": 1}],
+      "dimension: use one of": [{**MEASUREMENT, "dimension": "accuracy"}],
+      "metric_kind: use one of": [{**MEASUREMENT, "metric_kind": "score"}],
+      "value_text: the number exactly as the source writes it": [{**MEASUREMENT, "value_text": ""}],
+      "unit: needs a unit": [{**MEASUREMENT, "unit": " "}],
+      "evidence: needs 1-20 items": [{**MEASUREMENT, "evidence": []}],
+      "fields.precision: unknown field": [{**MEASUREMENT, "fields": {**fields, "precision": {"unknown": "x"}}}],
+      'needs "label" and "as_written"': [{**MEASUREMENT, "fields": {**fields, "task": {"label": "x"}}}],
+      "unknown: say why the source does not state it": [{**MEASUREMENT, "fields": {**fields, "task": {"unknown": ""}}}],
+      '"label" and "as_written" must be text': [{**MEASUREMENT, "fields": {**fields, "task": {"label": "", "as_written": "x"}}}],
+      "fields.dataset[0].page": [{**MEASUREMENT, "fields": {**fields, "dataset": {**fields["dataset"], "page": 0}}}],
+      "fields: must be an object": [{**MEASUREMENT, "fields": []}],
+    }
+    for fragment, measurements in cases.items():
+      with self.subTest(fragment=fragment):
+        self.assertInvalid(measurements, fragment)
 
 
 if __name__ == "__main__":

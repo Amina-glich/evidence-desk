@@ -1,7 +1,7 @@
 {
   "id": "evidence-desk",
   "name": "Evidence Desk",
-  "version": "0.4.1",
+  "version": "0.5.0",
   "description": "Compare AI/ML research papers with findings traced to a source, page and exact quotation.",
   "entry": "index.jsx",
   "offline_capable": false,
@@ -23,6 +23,7 @@
     "desk/errors.py",
     "desk/evidence.py",
     "desk/export.py",
+    "desk/measurements.py",
     "desk/pdf_text.py",
     "desk/project_fs.py",
     "desk/service.py",
@@ -74,7 +75,7 @@
     },
     {
       "name": "check_evidence",
-      "description": "Read-only. Validates every evidence/S<n>.json file and checks each quotation against the registered page text of its source, on the page it cites. Reports invalid files and every quotation that is not found, is on a different page, or is too short. Matching is exact after normalizing PDF extraction artefacts; nothing is fuzzy-matched. Takes no arguments.",
+      "description": "Read-only. Validates every evidence/S<n>.json file and checks each quotation against the registered page text of its source, on the page it cites: finding evidence, both sides of contradictions, and measurement values and compatibility fields. Also reports measurement problems: a value not in its quotation, field words not in their quotation, a unit mismatch, a difference or ratio recorded as a value, or missing hardware for speed or training cost. Matching is exact after normalizing PDF extraction artefacts; nothing is fuzzy-matched. Takes no arguments.",
       "input_schema": {
         "type": "object",
         "properties": {},
@@ -83,7 +84,7 @@
     },
     {
       "name": "export_comparison",
-      "description": "Write exports/comparison.csv and exports/comparison.html for the sources in desk.json compare_sources (all registered sources if empty). The CSV has status, finding, evidence, quotation check, note, checked absences and contradictions for each of the six dimensions; the HTML is the same evidence as a citation-linked matrix. Refuses while an in-scope evidence file is invalid. Takes no arguments.",
+      "description": "Write exports/comparison.csv and exports/comparison.html for the sources in desk.json compare_sources (all registered sources if empty). The CSV has status, finding, evidence, quotation check, note, checked absences and contradictions for each of the six dimensions; the HTML is the same evidence as a citation-linked matrix plus a Reported measurements table, with dot plots only where every compatibility field matches across sources and is quote-backed. Refuses while an in-scope evidence file is invalid. Takes no arguments.",
       "input_schema": {
         "type": "object",
         "properties": {},

@@ -25,6 +25,7 @@ from desk import service
 from desk.project_fs import project_lock
 from desk.vocabulary import DIMENSIONS
 from tests.pdf_fixtures import make_pdf, paper_pdf
+from tests.test_measurements import A_76, B_74, PAPER_A, PAPER_B, accuracy
 from tests.support import POSIX, REPO_ROOT, SKIP_REASON, Platform, tool_envelope
 
 
@@ -438,7 +439,7 @@ class WorkflowTest(unittest.TestCase):
     self.assertIn(QUOTE_DATA, text)
     self.assertIn("Single run.", text)
     self.assertIn("2 of 2 quotations verified", text)
-    self.assertIn("This is an evidence matrix, not a chart.", text)
+    self.assertIn("This is an evidence matrix.", text)
 
   def test_creation_builder_matches_the_exported_view(self):
     self.add()
@@ -508,6 +509,61 @@ class WorkflowTest(unittest.TestCase):
     self.assertEqual(code, 1)
     self.assertIn("symlink", stderr)
     self.assertEqual(os.listdir(output), [])
+
+
+  # Structured measurements.
+
+  def add_measured_papers(self):
+    for name, pages in (("a.pdf", PAPER_A), ("b.pdf", PAPER_B)):
+      (self.root / "inbox" / name).write_bytes(make_pdf([page.strip().split("\n") for page in pages]))
+    first, second = self.add("inbox/a.pdf")["source_id"], self.add("inbox/b.pdf")["source_id"]
+    self.assertEqual((first, second), ("S2", "S3"))
+    desk = {"schema": 1, "research_question": "Q", "compare_sources": ["S2", "S3"]}
+    (self.root / "desk.json").write_text(json.dumps(desk))
+
+  def test_permitted_measurements_are_checked_and_plotted(self):
+    self.add()
+    self.add_measured_papers()
+    self.write_evidence({"schema": 1, "source": "S2", "findings": {}, "measurements": [accuracy("76.3%", A_76)]}, source="S2")
+    self.write_evidence({"schema": 1, "source": "S3", "findings": {}, "measurements": [accuracy("74.9%", B_74)]}, source="S3")
+    report = self.call("check_evidence")
+    self.assertTrue(report["ok"], report["problems"])
+    measured = {entry["source"]: entry for entry in report["sources"]}
+    self.assertEqual((measured["S2"]["measurements"], measured["S2"]["quotes_verified"]), (1, 2))
+    reply = self.call("export_comparison")
+    self.assertEqual((reply["quotes_verified"], reply["quotes_failed"]), (4, 0))
+    view = (self.root / "exports" / "comparison.html").read_text(encoding="utf-8")
+    self.assertIn('id="chart-1"', view)
+    self.assertEqual(view.count("Plotted in chart 1"), 2)
+    # The CSV layout does not change with measurements.
+    self.assertEqual(len(self.read_csv()[0]), 3 + 7 * len(DIMENSIONS))
+
+  def test_measurement_problems_are_reported_and_never_plotted(self):
+    self.add()
+    self.add_measured_papers()
+    wrong_value = accuracy("76.4%", A_76)
+    wrong_quote = accuracy("74.9%", "A single model achieves 74.9% top-1 accuracy on every benchmark.")
+    self.write_evidence({"schema": 1, "source": "S2", "findings": {}, "measurements": [wrong_value]}, source="S2")
+    self.write_evidence({"schema": 1, "source": "S3", "findings": {}, "measurements": [wrong_quote]}, source="S3")
+    report = self.call("check_evidence")
+    self.assertFalse(report["ok"])
+    problems = [problem for problem in report["problems"] if problem.get("part") == "measurement"]
+    self.assertIn(("S2", 1, "value_not_in_quote"), [(p["source"], p["measurement"], p.get("problem")) for p in problems])
+    self.assertIn(("S3", 1, "not_found"), [(p["source"], p["measurement"], p.get("result")) for p in problems])
+    # Measurement problems do not block the export; the view says why.
+    self.call("export_comparison")
+    view = (self.root / "exports" / "comparison.html").read_text(encoding="utf-8")
+    self.assertNotIn('id="chart-1"', view)
+    self.assertIn("No values are plotted.", view)
+    self.assertIn("&quot;76.4%&quot; does not appear in its quotation", view)
+    self.assertIn("the value&#x27;s quotation did not verify", view)
+
+  def test_invalid_measurement_structure_invalidates_the_file_like_any_other_mistake(self):
+    self.add()
+    self.write_evidence({"schema": 1, "source": "S1", "findings": {}, "measurements": [{"value_text": "1"}]})
+    report = self.call("check_evidence")
+    self.assertEqual(report["summary"]["invalid_evidence_files"], 1)
+    self.assertEqual(self.call("export_comparison", expect=409)["error"], "invalid_evidence")
 
 
 if __name__ == "__main__":

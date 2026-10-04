@@ -82,6 +82,28 @@ frame whose base URL is the Möbius page (CSP `base-uri 'none'`), so a plain
 Möbius). `viewer.NAV_SCRIPT`, a fixed script with no data, network or
 parent access, handles in-page link clicks; keep every internal href a
 plain `#id` (tested).
+0.5.0: optional top-level `measurements` in evidence files (schema stays 1).
+Each has `value_text` as written, `unit`, `metric_kind`, value quotations
+and required `fields` (task, dataset, split, metric, metric_definition,
+variant; plus hardware for speed/training_cost), each `label` +
+`as_written` (+ optional own quote) or `{"unknown": reason}`.
+`desk/measurements.py` is pure: V1-V6 evidence checks and P1-P6 plot
+rules. Never infer a field: unknown blocks plotting. Conflicts (P5) are
+found among all of a source's measurements regardless of their other
+problems, with unknown labels as wildcards; conflicting values are never
+plotted. P6: a value overlapping a recorded contradiction side (same page
+and text) or sharing its number, in the same source and dimension, is never
+plotted; an unverifiable contradiction excludes the whole dimension. V3
+checks hardware whenever supplied; V4 checks percent signs in the quote.
+Chart points link to the verified quotation that shows the value
+(`Assessed.value_quote`); the SVG uses `role="group"` so point links stay
+accessible. Labels group only when identical after case/space
+normalization (under-group, never over-group).
+The view's "Reported measurements" table lists every measurement with
+"Plotted in chart N" or the reason; every value and field links to its
+quotation. The CSV does not change. The S1/S2 audit (Transformer vs
+ConvS2S, same WMT14 benchmarks, different variant / unknown BLEU
+definition / different hardware) is a regression test: 0 charts.
 The manifest passes the platform's `validate_manifest_contract`, and
 `validate-app.py` passes with the exact Möbius compiler (`index.jsx`
 compiles with Rolldown 1.2.11).

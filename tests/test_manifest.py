@@ -144,6 +144,22 @@ class ManifestTest(unittest.TestCase):
 class GuidanceTest(unittest.TestCase):
   """Starter files and guidance use the vocabulary the code uses."""
 
+  def test_skill_measurement_example_is_valid_and_passes_every_check(self):
+    from desk.measurements import compare
+    from tests.reports import report_for
+    from tests.test_measurements import PAPER_A
+
+    text = (REPO_ROOT / "evidence-desk.md").read_text(encoding="utf-8")
+    block = re.search(r'```json\n("measurements": \[\{\n  "dimension".*?)```', text, flags=re.DOTALL)
+    self.assertIsNotNone(block)
+    measurements = json.loads("{" + block.group(1) + "}")["measurements"]
+    report = report_for({}, pages=PAPER_A, measurements=measurements)
+    (row,) = compare([report]).rows
+    self.assertEqual(row.assessed.problems, ())
+    self.assertEqual(row.assessed.unknown, ())
+    # Alone, it is reported but cannot be plotted (P1).
+    self.assertIn("no other source", row.reason)
+
   def test_starter_desk_json_matches_the_data_format(self):
     data = json.loads((REPO_ROOT / "templates" / "desk.json").read_text(encoding="utf-8"))
     self.assertEqual(data, {"schema": SCHEMA_VERSION, "research_question": None, "compare_sources": []})

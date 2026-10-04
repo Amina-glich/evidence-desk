@@ -13,6 +13,7 @@ from html.parser import HTMLParser
 from desk.viewer import NAV_SCRIPT, render_html
 from desk.vocabulary import DIMENSIONS
 from tests.reports import QUOTE_DATA, QUOTE_RESULT, REPORTED, report_for
+from tests.test_measurements import A_76, B_74, PAPER_A, PAPER_B, accuracy, audit_reports, source
 
 
 class Page(HTMLParser):
@@ -228,6 +229,110 @@ class InPageNavigationTest(unittest.TestCase):
     self.assertNotIn("</script", NAV_SCRIPT.lower())
 
 
+class MeasurementsViewTest(unittest.TestCase):
+
+  def plotted(self, **overrides):
+    s1 = source("S1", PAPER_A, accuracy("76.3%", A_76, **overrides))
+    s2 = source("S2", PAPER_B, accuracy("74.9%", B_74, **overrides))
+    return render_html([s1, s2], research_question=None)
+
+  def test_without_measurements_the_section_says_so_and_draws_nothing(self):
+    html = render_html(two_sources(), research_question=None)
+    page = Page(html)
+    self.assertIn("Reported measurements", html)
+    self.assertIn("No structured measurements are recorded for these sources yet.", html)
+    self.assertFalse({"svg", "figure"} & page.tags)
+
+  def test_a_permitted_chart_links_every_point_to_its_value_quotation(self):
+    html = self.plotted()
+    page = Page(html)
+    self.assertIn("chart-1", page.ids)
+    self.assertIn("svg", page.tags)
+    self.assertIn("1 chart of 2 measurements.", html)
+    self.assertIn("this is not a controlled experiment, and values are not ranked".lower(), html.lower())
+    points = [target for target, text in page.links if "open the quotation" in text]
+    self.assertEqual(len(points), 2)
+    for target, value in zip(points, ("76.3%", "74.9%")):
+      self.assertIn(value, page.text_by_id[target])
+      self.assertIn("measurement value", page.text_by_id[target])
+      self.assertIn("verified", page.text_by_id[target])
+    for row in ("m-S1-1", "m-S2-1"):
+      self.assertIn("Plotted in chart 1", page.text_by_id[row])
+    # A percent value is shown once, as written, and the axis range is stated.
+    self.assertIn("76.3% [S1 p.2, verified]", page.text_by_id["m-S1-1"])
+    self.assertNotIn("76.3% %", html)
+    self.assertIn("covers only the plotted range (74.9 to 76.3 %), not zero", html)
+    # On narrow screens the chart scrolls instead of shrinking its labels.
+    self.assertIn('<div class="scroll"><svg', html)
+    self.assertIn("min-width: 480px", html)
+
+  def test_a_chart_point_links_to_the_quotation_that_shows_its_value(self):
+    # The reviewed case: a context quotation listed first used to be the link target.
+    from tests.test_measurements import DEFINITION_QUOTE
+    measurement = accuracy("76.3%", A_76)
+    measurement["evidence"] = [{"page": 1, "quote": DEFINITION_QUOTE}, {"page": 2, "quote": A_76}]
+    html = render_html([source("S1", PAPER_A, measurement), source("S2", PAPER_B, accuracy("74.9%", B_74))], research_question=None)
+    page = Page(html)
+    points = [target for target, text in page.links if "open the quotation" in text]
+    self.assertEqual(len(points), 2)
+    for target, value in zip(points, ("76.3%", "74.9%")):
+      self.assertIn(value, page.text_by_id[target])
+      self.assertIn("verified", page.text_by_id[target])
+
+  def test_chart_points_stay_exposed_to_assistive_technology(self):
+    html = self.plotted()
+    svg = re.search(r"<svg\b[^>]*>.*?</svg>", html, flags=re.DOTALL).group(0)
+    opening = re.match(r"<svg\b[^>]*>", svg).group(0)
+    # role="img" would make the point links presentational for screen readers.
+    self.assertNotIn('role="img"', html)
+    self.assertIn('role="group"', opening)
+    labelledby = re.search(r'aria-labelledby="([^"]+)"', opening).group(1)
+    self.assertIn(labelledby, Page(html).ids)
+    links = re.findall(r'<a href="#[^"]+">(.*?)</a>', svg, flags=re.DOTALL)
+    self.assertEqual(len(links), 2)
+    for link in links:
+      self.assertRegex(link, r"^<title>S\d+: [^<]+ — open the quotation</title>")
+
+  def test_every_field_links_to_a_quotation_containing_its_words(self):
+    page = Page(self.plotted())
+    links = dict.fromkeys(target for target, _text in page.links)
+    for row, written in (("m-S1-1", ("image classification", "ImageNet", "validation set", "top-1 accuracy", "single model")),):
+      row_targets = [target for target in links if target.startswith("q-S1-")]
+      quotes = " ".join(page.text_by_id[target].casefold() for target in row_targets)
+      for words in written:
+        self.assertIn(words.casefold(), quotes)
+    # The metric definition has its own quotation, cited as a separate entry.
+    definition = [target for target in links if target.startswith("q-S1-") and "measurement metric definition" in page.text_by_id[target]]
+    self.assertEqual(len(definition), 1)
+    self.assertIn("single-crop 224 evaluation", page.text_by_id[definition[0]])
+    self.assertIn("Back to the measurement", page.text_by_id[definition[0]])
+
+  def test_refused_comparisons_show_every_value_with_its_reason_and_no_chart(self):
+    html = render_html(audit_reports(), research_question=None)
+    page = Page(html)
+    self.assertFalse({"svg", "figure"} & page.tags)
+    self.assertIn("No values are plotted.", html)
+    rows = [element for element in page.ids if element.startswith("m-")]
+    self.assertEqual(len(rows), 9)
+    for row in rows:
+      self.assertIn("Not compared: ", page.text_by_id[row])
+    self.assertIn("unknown", page.text_by_id["m-S1-1"])
+    self.assertIn("The BLEU variant is not stated in the recorded evidence.", page.text_by_id["m-S1-1"])
+
+  def test_links_resolve_and_text_is_escaped_in_the_table_and_the_chart(self):
+    hostile = '<script>alert(1)</script>" onmouseover="x'
+    html = self.plotted(dataset={"label": hostile, "as_written": "ImageNet"})
+    page = Page(html)
+    self.assertIn("svg", page.tags)
+    self.assertEqual(page.scripts, [NAV_SCRIPT])
+    self.assertFalse([name for name, _value in page.attributes if name.startswith("on")])
+    self.assertIn("&lt;script&gt;", html)
+    targets = set(page.ids)
+    self.assertEqual([target for target, _text in page.links if target not in targets], [])
+    self.assertEqual(len(page.ids), len(set(page.ids)))
+
+
+
 class SafetyTest(unittest.TestCase):
 
   HOSTILE = '<script>alert(1)</script><img src=x onerror=alert(2)>" onmouseover="x'
@@ -261,8 +366,8 @@ class SafetyTest(unittest.TestCase):
     self.assertNotIn("http://", html)
     self.assertNotIn("https://", html)
     self.assertFalse([value for name, value in page.attributes if name in ("src", "srcset")])
-    self.assertIn("This is an evidence matrix, not a chart.", html)
-    self.assertIn("does not plot values across papers", html)
+    self.assertIn("This is an evidence matrix.", html)
+    self.assertIn("plotted only under the strict conditions", html)
 
   def test_output_is_deterministic(self):
     self.assertEqual(
