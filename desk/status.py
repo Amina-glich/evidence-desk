@@ -15,6 +15,7 @@ import json
 from desk import SCHEMA_VERSION
 from desk.binding import ProjectBinding
 from desk.errors import DeskError
+from desk.library import read_library
 from desk.project_fs import SOURCE_ID_RE, Project
 
 
@@ -22,12 +23,13 @@ LIST_LIMIT = 100
 DESK_JSON_MAX_BYTES = 256 * 1024
 QUESTION_MAX_CHARS = 500
 
-# Who writes each area. The service writes only sources/ and exports/.
+# Who writes each area. The service writes only sources/, exports/ and library/.
 AREAS = (
   ("inbox", "owner"),
   ("sources", "service"),
   ("evidence", "agent"),
   ("exports", "service"),
+  ("library", "service"),
 )
 AGENT_FILES = ("desk.json", "synthesis.md")
 
@@ -99,11 +101,23 @@ def _agent_file(project: Project, name: str) -> dict:
   return {"written_by": "agent", "state": "present" if present else "missing"}
 
 
+def _library(project: Project) -> dict:
+  """How many references the owner saved; discovery metadata, not evidence."""
+  try:
+    references, _revision = read_library(project)
+  except DeskError as exc:
+    if exc.code == "library_invalid":
+      return {"state": "invalid", "detail": exc.message}
+    return _refused(exc)
+  return {"state": "present" if references else "empty", "references": len(references)}
+
+
 def project_status(binding: ProjectBinding, _arguments: dict) -> dict:
   """The status report returned to the agent."""
   with binding.open() as project:
     areas = {name: _area(project, name, writer) for name, writer in AREAS}
     files = {"desk.json": _desk_json(project), "synthesis.md": _agent_file(project, "synthesis.md")}
+    references = _library(project)
   pdfs = [
     name for name in areas["inbox"].get("files", [])
     if name.lower().endswith(".pdf")
@@ -117,4 +131,5 @@ def project_status(binding: ProjectBinding, _arguments: dict) -> dict:
     "areas": areas,
     "files": files,
     "inbox_pdfs": len(pdfs),
+    "library": references,
   }

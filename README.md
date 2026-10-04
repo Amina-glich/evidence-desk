@@ -4,15 +4,33 @@ A Möbius Project app for comparing AI/ML research papers with source-grounded
 evidence: every extracted value points to a source, page and exact quote, and
 missing information is labelled “Not reported” instead of guessed.
 
-**Status: 0.5.0.** The app has a manifest, a launcher, a Project template
-with agent guidance, a service with four agent tools — `project_status`,
+**Status: 0.6.0.** The app has a manifest, a launcher, a Project template
+with agent guidance, a service with seven agent tools — `project_status`,
 `add_source` (register an uploaded PDF and extract its page text with
-pypdf), `check_evidence` (deterministic quotation checking) and
-`export_comparison` (comparison CSV and view) — and a citation-linked
-**Evidence comparison** Creation. Version 0.4.1 was tested end to end in a
-hosted Möbius instance (two papers, citation navigation in the Möbius
-preview). 0.5.0 adds structured measurements and has not been installed
-yet. Online paper lookup (arXiv, DOI) is not implemented yet.
+pypdf), `check_evidence` (deterministic quotation checking),
+`export_comparison` (comparison CSV and view), and arXiv discovery:
+`search_literature`, `lookup_reference` and `save_reference` — and a
+citation-linked **Evidence comparison** Creation. Version 0.4.1 was tested
+end to end in a hosted Möbius instance; 0.5.0 measurements and 0.6.0
+discovery have not been installed yet. Publisher-DOI lookup (Crossref) is
+not implemented yet.
+
+## Literature discovery and the reference library
+
+`search_literature` and `lookup_reference` read arXiv metadata;
+`save_reference` stores one record the owner chose in
+`library/references.json`, a service-owned area kept apart from `inbox/`,
+`sources/`, `evidence/` and `exports/`. Records are discovery metadata,
+never evidence, and no PDF is downloaded: the owner uploads the paper's PDF
+to `inbox/` and registers it with `add_source` as before.
+
+Only `https://export.arxiv.org/api/query` is contacted, with fixed
+parameters, no redirects and no proxies; caller-supplied URLs are never
+fetched. Requests are paced across processes (one at a time, at least
+3 seconds apart, honouring `Retry-After`) by a lock in app storage. A saved
+record is built from arXiv's response, not from tool arguments, with the
+request, time and response SHA-256 as provenance; duplicates (same arXiv id
+or publisher DOI) are not saved twice.
 
 ## Comparison view
 
@@ -69,6 +87,7 @@ the exported file.
 | `inbox/` | Owner (PDF uploads). Service and agent only read it. |
 | `sources/S<n>/` | Service only. |
 | `exports/` | Service only. |
+| `library/` | Service only (owner-selected arXiv references; not evidence). |
 | `evidence/S<n>.json`, `desk.json`, `synthesis.md` | Agent. |
 
 ## Service core
@@ -80,6 +99,8 @@ the exported file.
 | `desk/pdf_text.py` | Bounded pypdf extraction; refuses non-PDF, damaged, encrypted, oversized and text-less (scanned) files. |
 | `desk/evidence.py` | Strict validation of `evidence/S<n>.json` (findings plus optional notes, checked absences and quote-backed contradictions); `check_evidence` matches each quotation, including both sides of every contradiction, on its cited page after a fixed normalization of PDF artefacts. No fuzzy matching. |
 | `desk/export.py` | `export_comparison`: `exports/comparison.html` (see `desk/viewer.py`) and a deterministic, formula-safe `exports/comparison.csv` with the service's own check per finding; the original 27 columns keep their positions and each finding's note, checked absences and contradictions follow in appended columns. Refuses a cell over 32,000 characters instead of letting spreadsheet software cut it. |
+| `desk/arxiv.py` | Read-only arXiv client: identifier and query validation, fixed-host HTTPS transport without redirects or proxies, cross-process pacing, safe error mapping, and a strict Atom parser. |
+| `desk/library.py` | The reference library and the `search_literature`, `lookup_reference` and `save_reference` tools. |
 | `desk/measurements.py` | Pure comparability rules: evidence checks for measurements (number in its quotation, field words in theirs, unit, no differences or ratios, hardware for speed and cost), the compatibility key, and which values may share a plot. |
 | `desk/viewer.py` | The comparison view: one self-contained, escaped, deterministic HTML page from checked reports. |
 | `desk/status.py` | `project_status`: the bound project's name, id and area contents. Never lists other projects or follows symlinks. |

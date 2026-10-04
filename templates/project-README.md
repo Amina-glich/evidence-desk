@@ -13,6 +13,7 @@ page and an exact quotation, so it can be checked against the paper.
 | `desk.json` | The agent | The research question and which sources are compared. |
 | `synthesis.md` | The agent | The research brief. |
 | `exports/` | Evidence Desk | The comparison CSV and comparison view. Regenerated; do not edit. |
+| `library/` | Evidence Desk | Papers you chose to save from arXiv searches: bibliographic metadata, not evidence. |
 
 ## What the statuses mean
 

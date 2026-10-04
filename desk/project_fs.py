@@ -6,8 +6,8 @@ to an already-open directory descriptor with ``O_NOFOLLOW``: a symlink placed
 anywhere under the project (for example ``sources/S9 -> /data``) is refused
 instead of followed, and ``..`` or absolute paths never reach the filesystem.
 
-Writes are confined to the service-owned roots (``sources/`` and
-``exports/``). The agent owns ``evidence/``, ``desk.json`` and
+Writes are confined to the service-owned roots (``sources/``, ``exports/``
+and ``library/``). The agent owns ``evidence/``, ``desk.json`` and
 ``synthesis.md``; the owner's uploads live in ``inbox/``, which the service
 only reads. The platform offers no lock shared with the agent's file
 tools, so ownership is separated by path and service writers are serialized
@@ -47,7 +47,7 @@ UUID_RE = re.compile(
   r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
   re.IGNORECASE,
 )
-SERVICE_OWNED_ROOTS = frozenset({"sources", "exports"})
+SERVICE_OWNED_ROOTS = frozenset({"sources", "exports", "library"})
 STAGING_DIR = ".staging"
 LOCK_TIMEOUT_SECONDS = 30.0
 SOURCE_ID_RE = re.compile(r"^S([1-9][0-9]{0,5})$")
@@ -273,6 +273,65 @@ def project_lock(
     os.close(locks_fd)
 
 
+_APP_LOCK_NAME_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,39}$")
+
+
+@contextlib.contextmanager
+def app_lock(app_storage_dir: Path, name: str, *, timeout: float) -> Iterator[int]:
+  """An exclusive cross-process lock in the app's private storage.
+
+  For app-wide state that is not about one project, such as pacing requests
+  to an external service. Yields the open lock file descriptor; its holder may
+  keep a few bytes of state in it. Like ``project_lock``, the file lives in
+  ``<app storage>/locks/`` and every path component is opened without
+  following symlinks. Because the holder reads it, anything other than a
+  regular file (a folder, a FIFO) is refused; it is opened non-blocking so
+  that refusing never waits.
+  """
+  require_posix()
+  if not _APP_LOCK_NAME_RE.match(name):
+    raise DeskError("invalid_lock", "Invalid app lock name.", status=500)
+  os.makedirs(app_storage_dir, exist_ok=True)
+  base_fd = os.open(str(app_storage_dir), _dir_flags() & ~os.O_NOFOLLOW)
+  try:
+    locks_fd = _open_child_dir(base_fd, "locks", create=True)
+  finally:
+    os.close(base_fd)
+  try:
+    lock_fd = os.open(
+      f"app-{name}.lock",
+      os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW | os.O_CLOEXEC | os.O_NONBLOCK,
+      0o600,
+      dir_fd=locks_fd,
+    )
+  except OSError as exc:
+    os.close(locks_fd)
+    if exc.errno == errno.EISDIR:
+      raise DeskError("unsafe_path", "The app lock is not a regular file.") from exc
+    raise _refuse_link("app lock", exc) from exc
+  try:
+    if not stat.S_ISREG(os.fstat(lock_fd).st_mode):
+      raise DeskError("unsafe_path", "The app lock is not a regular file.")
+    deadline = time.monotonic() + timeout
+    while True:
+      try:
+        fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        break
+      except BlockingIOError:
+        if time.monotonic() >= deadline:
+          raise DeskError(
+            "busy", "Another Evidence Desk request is still running; try again shortly.", status=503,
+          ) from None
+        time.sleep(0.05)
+    try:
+      yield lock_fd
+    finally:
+      fcntl.flock(lock_fd, fcntl.LOCK_UN)
+  finally:
+    os.close(lock_fd)
+    os.close(locks_fd)
+
+
 @dataclass
 class SourceStage:
   """A private staging folder whose contents become one ``sources/Sn``."""
@@ -440,7 +499,7 @@ class Project:
     if len(parts) < 2 or parts[0] not in SERVICE_OWNED_ROOTS:
       raise DeskError(
         "not_service_owned",
-        "The service only writes under sources/ and exports/.",
+        "The service only writes under sources/, exports/ and library/.",
       )
     if any(part.startswith(".") for part in parts):
       raise DeskError("unsafe_path", "Hidden service paths are reserved.")

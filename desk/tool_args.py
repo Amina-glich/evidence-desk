@@ -37,6 +37,14 @@ TOOL_SPECS = {
   "check_evidence": ToolSpec(writes=False, fields=frozenset()),
   "export_comparison": ToolSpec(writes=True, fields=frozenset()),
   "project_status": ToolSpec(writes=False, fields=frozenset()),
+  # arXiv discovery: read-only search and lookup, and an explicit save.
+  "search_literature": ToolSpec(writes=False, fields=frozenset({"query"}), require_any=frozenset({"query"})),
+  "lookup_reference": ToolSpec(
+    writes=False, fields=frozenset({"identifier"}), require_any=frozenset({"identifier"}),
+  ),
+  "save_reference": ToolSpec(
+    writes=True, fields=frozenset({"identifier"}), require_any=frozenset({"identifier"}),
+  ),
 }
 
 

@@ -108,8 +108,25 @@ The manifest passes the platform's `validate_manifest_contract`, and
 `validate-app.py` passes with the exact Möbius compiler (`index.jsx`
 compiles with Rolldown 1.2.11).
 
-Not done (next stages): `add_source` by arXiv id / DOI (network), Semantic
-Scholar suggestions.
+0.6.0: arXiv discovery (`desk/arxiv.py`) and a project reference library
+(`desk/library.py`, `library/references.json`, a service-owned root).
+Tools: `search_literature`, `lookup_reference` (read-only) and
+`save_reference` (write; identifier only, the record comes from arXiv's
+response with provenance). Only `https://export.arxiv.org/api/query`; no
+caller URLs are fetched, redirects and proxies are disabled. Pacing: one
+request at a time, >= 3 s apart, `Retry-After` honoured, via
+`project_fs.app_lock("arxiv")` in app storage. No response cache on purpose
+(an agent can write app storage; a cached response could fake metadata).
+Library records are never evidence and never read by evidence checks or
+exports; no PDF is downloaded. Publisher DOIs return `unsupported_doi`.
+Tests replace `arxiv.transport`; the recorded fixture
+`tests/fixtures/arxiv/1706.03762.atom.xml` (CC0 metadata) is used offline.
+Outbound HTTPS was confirmed from a hosted Möbius chat environment, not yet
+from the Evidence Desk service.
+
+Not done (next stages): linking a registered source to a library record
+(`add_source(reference=…)`), a library section in the comparison view,
+Crossref lookup for publisher DOIs, Semantic Scholar suggestions.
 
 Verified by the owner in a hosted Möbius instance: 0.3.0 end to end (install
 and Apply, live binding, tool calls from a real agent, two papers, 51
@@ -139,8 +156,9 @@ Design consequences:
 
 MVP order: P0 `add_source` from `inbox/` PDFs, deterministic
 `check_evidence`, `export_comparison` CSV (done); P1 comparison view
-Creation (done in 0.4.0) and arXiv/DOI metadata lookup; P2 Semantic Scholar
-suggestions, reviewer helper pass.
+Creation (done in 0.4.0) and arXiv metadata discovery (done in 0.6.0);
+P2 Crossref publisher-DOI lookup, Semantic Scholar suggestions, reviewer
+helper pass.
 
 ## Python dependencies
 

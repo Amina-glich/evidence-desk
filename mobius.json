@@ -1,7 +1,7 @@
 {
   "id": "evidence-desk",
   "name": "Evidence Desk",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "Compare AI/ML research papers with findings traced to a source, page and exact quotation.",
   "entry": "index.jsx",
   "offline_capable": false,
@@ -19,10 +19,12 @@
     "requirements.lock",
     "evidence-desk.md",
     "desk/__init__.py",
+    "desk/arxiv.py",
     "desk/binding.py",
     "desk/errors.py",
     "desk/evidence.py",
     "desk/export.py",
+    "desk/library.py",
     "desk/measurements.py",
     "desk/pdf_text.py",
     "desk/project_fs.py",
@@ -90,6 +92,57 @@
         "properties": {},
         "additionalProperties": false
       }
+    },
+    {
+      "name": "search_literature",
+      "description": "Read-only. Search arXiv for papers matching every word of the query and return up to 10 records: arXiv id and version, title, authors, abstract, categories, dates, journal reference, DOI if the authors gave one, and the canonical abstract page. Shows which results are already in this project's library. Results are bibliographic metadata for discovery, never evidence. Works only in an Evidence Desk project chat.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "Free-text search words, 3-300 characters."
+          }
+        },
+        "required": [
+          "query"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "lookup_reference",
+      "description": "Read-only. Look up one arXiv record by arXiv id (1706.03762, 1706.03762v7, hep-th/9901001), arXiv: id, arxiv.org/abs/ address (read as text, never fetched) or arXiv DOI (10.48550/arXiv.1706.03762). Publisher DOIs are not supported yet. Returns bibliographic metadata, never evidence.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "identifier": {
+            "type": "string",
+            "description": "An arXiv identifier or arXiv DOI."
+          }
+        },
+        "required": [
+          "identifier"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "save_reference",
+      "description": "Save one arXiv record to this project's reference library (library/references.json), only after the owner explicitly chose that paper. The service fetches the record from arXiv itself and stores it with provenance; duplicates are not saved twice. A library record is discovery metadata, not evidence, and no PDF is downloaded: to use a paper, the owner uploads its PDF to inbox/ and it is registered with add_source.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "identifier": {
+            "type": "string",
+            "description": "The arXiv identifier the owner chose."
+          }
+        },
+        "required": [
+          "identifier"
+        ],
+        "additionalProperties": false
+      }
     }
   ],
   "project_templates": [
@@ -98,7 +151,7 @@
       "name": "Paper comparison",
       "kind": "research",
       "description": "Compare research papers on six dimensions, with every finding traced to a page and exact quotation.",
-      "guidance": "Evidence Desk project. Read the evidence-desk skill before working. inbox/ holds the owner's uploads: read only. sources/ and exports/ are written only by Evidence Desk tools: never edit them. You write evidence/, desk.json and synthesis.md. A Reported finding needs a source id, page and exact quotation; otherwise it is Not reported (checked and absent) or Not assessed. Never invent findings. The Evidence comparison Creation and exports/comparison.html show the evidence as a citation-linked matrix; never present values from different papers as directly comparable.",
+      "guidance": "Evidence Desk project. Read the evidence-desk skill before working. inbox/ holds the owner's uploads: read only. sources/ and exports/ are written only by Evidence Desk tools: never edit them. You write evidence/, desk.json and synthesis.md. A Reported finding needs a source id, page and exact quotation; otherwise it is Not reported (checked and absent) or Not assessed. Never invent findings. The Evidence comparison Creation and exports/comparison.html show the evidence as a citation-linked matrix; never present values from different papers as directly comparable. search_literature and lookup_reference find arXiv papers; save_reference adds an owner-selected paper to library/, which only Evidence Desk writes. Library metadata is never evidence.",
       "skills": [
         "evidence-desk.md"
       ],
@@ -138,6 +191,11 @@
           "id": "plan",
           "name": "Plan a comparison",
           "prompt": "Help me set up this paper comparison. Read desk.json and project_status first, then ask me for the research question and the papers in scope before you edit desk.json. Do not record any findings yet."
+        },
+        {
+          "id": "find-papers",
+          "name": "Find papers",
+          "prompt": "Search arXiv for papers on a topic I will describe. Show me the results with their titles, authors, years and arXiv ids, and save to the library only the papers I choose. Do not download any PDF and do not record findings from abstracts."
         }
       ]
     }

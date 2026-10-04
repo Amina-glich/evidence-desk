@@ -20,7 +20,7 @@ import sys
 import traceback
 from typing import Callable, Mapping
 
-from desk import evidence, export, sources, status
+from desk import evidence, export, library, sources, status
 # Imported here, not where it is used, so that Möbius's Apply-time smoke run of
 # this entry imports pypdf and a broken app environment fails the Apply.
 from desk import pdf_text  # noqa: F401
@@ -39,6 +39,9 @@ HANDLERS: dict[str, Callable[[ProjectBinding, dict], object]] = {
   "add_source": sources.add_source,
   "check_evidence": evidence.check_evidence,
   "export_comparison": export.export_comparison,
+  "search_literature": library.search_literature,
+  "lookup_reference": library.lookup_reference,
+  "save_reference": library.save_reference,
 }
 
 
