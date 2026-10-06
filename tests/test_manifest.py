@@ -210,18 +210,43 @@ class LauncherTest(unittest.TestCase):
   def test_the_guide_covers_the_whole_workflow(self):
     flat = " ".join(self.source.split())
     for step in (
-      "Create a comparison below, or open one you already have",
+      "Create or open a comparison below",
       "upload your PDFs to the inbox/ folder",
-      "paste it into the project chat",
-      "Evidence comparison view, or exports/comparison.html",
+      "paste it into the project chat, review it and send it",
+      "Evidence comparison view or exports/comparison.html",
     ):
       self.assertIn(step, flat)
     self.assertIn("created from this version", flat)  # older projects keep their own template actions
+
+  def test_prompt_editors_are_collapsed_until_the_owner_opens_them(self):
+    self.assertIn("const [open, setOpen] = useState(false)", self.source)
+    self.assertIn("<details open={open}", self.source)
+    self.assertLess(self.source.index("<details open={open}"), self.source.index("<textarea"))
+    self.assertIn("<summary>Edit prompt text</summary>", self.source)
+    self.assertIn("setOpen(true)", self.source)  # a failed copy opens the editor so its text can be selected
+    self.assertIn("Reset text", self.source)
+    for prompt in self.prompts.values():
+      self.assertLessEqual(len(prompt["use"]), 110, "keep each explanation to one short line")
+
+  def test_every_prompt_has_a_distinctly_named_copy_button(self):
+    self.assertIn("aria-label={`Copy prompt: ${prompt.title}`}", self.source)
+    self.assertIn(">Copy prompt</button>", self.source)
+
+  def test_styling_uses_only_mobius_theme_variables(self):
+    css = re.search(r"const CSS = `(.*?)`", self.source, re.S).group(1)
+    self.assertNotRegex(css, r"#[0-9a-fA-F]{3,8}\b")
+    self.assertNotRegex(css, r"\b(?:rgb|rgba|hsl|hsla)\(")
+    # The names the Möbius app frame defines for every theme (frontend/public/app-frame.html).
+    theme = {"text", "muted", "border", "surface", "surface-2", "bg", "accent", "accent-hover", "accent-dim", "accent-fg", "danger", "font"}
+    self.assertEqual(set(re.findall(r"var\(--([a-z0-9-]+)\)", css)) - theme, set())
+    self.assertNotIn("@import", css)
+    self.assertNotIn("url(", css)
 
   def test_copying_uses_the_documented_clipboard_and_falls_back_to_manual_copy(self):
     self.assertIn("window.mobius?.clipboard?.writeText?.(text)", self.source)
     self.assertIn("=== true", self.source)  # the runtime resolves to a boolean; anything else is a failure
     self.assertIn("area.current?.select()", self.source)
+    self.assertIn("area.current?.focus()", self.source)
     self.assertIn("copy it manually", self.source)
     # The prompt is selectable text in every case, not only after a failed copy.
     self.assertRegex(self.source, r"<textarea\b")

@@ -136,6 +136,14 @@ prompts must stay identical to the template actions with the same id
 (`LauncherTest`); prompts hold no single quote. Template actions reach new
 projects only.
 
+0.6.2: launcher redesign only (`index.jsx`, `LauncherTest`). Compact header
+and workflow, "Your comparisons" first, quick-prompt rows whose editor is
+collapsed in a `<details>` until opened (a failed copy opens it and selects
+the text). Styling is one `<style>` block (`style-src` allows inline) that
+uses only Möbius theme variables; no colours, fonts or URLs of its own
+(tested). Prompt text, service, manifest actions and evidence rules are
+unchanged from 0.6.1.
+
 Not done (next stages): linking a registered source to a library record
 (`add_source(reference=…)`), a library section in the comparison view,
 Crossref lookup for publisher DOIs, Semantic Scholar suggestions.

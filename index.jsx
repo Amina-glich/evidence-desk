@@ -40,41 +40,57 @@ const PROMPTS = [
   },
 ]
 
-const styles = {
-  main: { maxWidth: 640, margin: '0 auto', padding: '24px 16px', color: 'var(--text)', fontFamily: 'var(--font)' },
-  muted: { color: 'var(--muted)' },
-  form: { display: 'flex', gap: 8, flexWrap: 'wrap', margin: '16px 0 28px' },
-  input: {
-    flex: '1 1 220px', minHeight: 44, padding: '0 12px', borderRadius: 8,
-    border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text)', font: 'inherit',
-  },
-  primary: {
-    minHeight: 44, padding: '0 16px', borderRadius: 8, border: 'none',
-    background: 'var(--accent)', color: 'var(--accent-fg)', font: 'inherit', cursor: 'pointer',
-  },
-  secondary: {
-    minHeight: 44, padding: '0 14px', borderRadius: 8, border: '1px solid var(--border)',
-    background: 'transparent', color: 'var(--text)', font: 'inherit', cursor: 'pointer',
-  },
-  note: {
-    margin: '16px 0', padding: '10px 12px', borderRadius: 8,
-    border: '1px solid var(--border)', background: 'var(--surface)',
-  },
-  steps: { margin: '8px 0 24px', paddingLeft: 22, lineHeight: 1.5 },
-  card: { margin: '16px 0', padding: 12, borderRadius: 8, border: '1px solid var(--border)' },
-  textarea: {
-    display: 'block', width: '100%', boxSizing: 'border-box', minHeight: 208, margin: '8px 0',
-    padding: 8, borderRadius: 8, border: '1px solid var(--border)', background: 'var(--surface)',
-    color: 'var(--text)', font: 'inherit', resize: 'vertical',
-  },
-  actions: { display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' },
-  list: { listStyle: 'none', padding: 0, margin: 0 },
-  row: {
-    display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12,
-    padding: '10px 0', borderTop: '1px solid var(--border)',
-  },
-  alert: { color: 'var(--danger)' },
-}
+// Möbius theme variables only (--text, --muted, --border, --surface, --bg, --accent, ...), so the
+// page follows the owner's light or dark theme. Classes are prefixed ed- to stay local to this page.
+const CSS = `
+.ed { max-width: 720px; margin: 0 auto; padding: 20px 16px 32px; color: var(--text); font-family: var(--font); font-size: 14px; line-height: 1.45; }
+.ed *, .ed *::before, .ed *::after { box-sizing: border-box; }
+.ed h1 { margin: 0; font-size: 22px; line-height: 1.2; font-weight: 650; }
+.ed h2 { margin: 0; font-size: 15px; font-weight: 600; }
+.ed h3 { margin: 0; font-size: 14px; font-weight: 600; }
+.ed p { margin: 0; }
+.ed :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.ed-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.ed-muted { color: var(--muted); }
+.ed-lead { margin-top: 4px; color: var(--muted); }
+.ed-steps { list-style: none; margin: 14px 0 0; padding: 0; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px 12px; }
+.ed-steps li { display: flex; gap: 8px; align-items: flex-start; font-size: 13px; color: var(--muted); }
+.ed-steps b { flex: none; display: grid; place-items: center; width: 20px; height: 20px; border-radius: 50%; background: var(--accent-dim); color: var(--text); font-size: 12px; font-weight: 600; }
+.ed-note { margin-top: 12px; padding-left: 10px; border-left: 2px solid var(--border); font-size: 13px; color: var(--muted); }
+.ed-panel { margin-top: 20px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); overflow: hidden; }
+.ed-panel-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; padding: 14px 16px 0; }
+.ed-form { display: flex; flex-wrap: wrap; gap: 8px; padding: 12px 16px 14px; }
+.ed-input { flex: 1 1 200px; min-height: 44px; padding: 0 12px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg); color: inherit; font: inherit; }
+.ed-btn { min-height: 44px; padding: 0 14px; border-radius: 8px; border: 1px solid var(--border); background: transparent; color: var(--text); font: inherit; white-space: nowrap; cursor: pointer; }
+.ed-btn:hover:not(:disabled) { background: var(--surface-2); }
+.ed-btn:disabled { opacity: 0.55; cursor: default; }
+.ed-btn--primary { border-color: var(--accent); background: var(--accent); color: var(--accent-fg); }
+.ed-btn--primary:hover:not(:disabled) { background: var(--accent-hover); }
+.ed-btn--accent { border-color: var(--accent); }
+.ed-list { list-style: none; margin: 0; padding: 0; }
+.ed-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 16px; border-top: 1px solid var(--border); }
+.ed-row-main { flex: 1 1 160px; min-width: 0; }
+.ed-row-name { display: block; font-weight: 600; overflow-wrap: anywhere; }
+.ed-row-date { font-size: 12px; color: var(--muted); }
+.ed-state { padding: 12px 16px; border-top: 1px solid var(--border); color: var(--muted); }
+.ed-alert { padding: 0 16px 12px; color: var(--danger); }
+.ed-quick { margin-top: 20px; padding: 14px 16px 16px; border: 1px solid var(--border); border-radius: 12px; background: var(--accent-dim); }
+.ed-quick-note { margin-top: 2px; font-size: 13px; color: var(--muted); }
+.ed-quick-list { list-style: none; margin: 12px 0 0; padding: 0; display: grid; gap: 8px; }
+.ed-prompt { padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); }
+.ed-prompt-top { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 12px; }
+.ed-prompt-text { flex: 1 1 200px; min-width: 0; }
+.ed-prompt-use { font-size: 13px; color: var(--muted); }
+.ed-prompt details { margin-top: 4px; }
+.ed-prompt summary { display: flex; align-items: center; min-height: 32px; font-size: 13px; color: var(--muted); cursor: pointer; }
+.ed-prompt textarea { display: block; width: 100%; min-height: 150px; margin-top: 4px; padding: 8px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); color: inherit; font: inherit; resize: vertical; }
+.ed-prompt-actions { display: flex; gap: 8px; margin-top: 8px; }
+.ed-msg { margin-top: 6px; font-size: 13px; color: var(--muted); }
+.ed-msg--manual { color: var(--text); }
+@media (max-width: 560px) { .ed-steps { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 480px) { .ed-form .ed-btn { flex: 1 1 100%; } .ed-prompt-top .ed-btn { flex: 1 1 100%; } }
+@media (max-width: 380px) { .ed-steps { grid-template-columns: 1fr; } }
+`
 
 function formatDate(value) {
   if (!value) return ''
@@ -89,8 +105,17 @@ function byRecent(a, b) {
 function PromptCard({ prompt }) {
   const [text, setText] = useState(prompt.text)
   const [note, setNote] = useState(null)
+  const [open, setOpen] = useState(false)
+  const [selectRequest, setSelectRequest] = useState(0)
   const area = useRef(null)
   const fieldId = `prompt-${prompt.id}`
+
+  // The text is selected only once its (collapsed) editor is open and rendered.
+  useEffect(() => {
+    if (!selectRequest) return
+    area.current?.focus()
+    area.current?.select()
+  }, [selectRequest])
 
   async function copy() {
     setNote(null)
@@ -106,28 +131,40 @@ function PromptCard({ prompt }) {
       setNote({ ok: true, message: `Copied. Paste it into the project chat, review it and send it.${reminder}` })
       return
     }
-    area.current?.focus()
-    area.current?.select()
+    setOpen(true)
+    setSelectRequest(count => count + 1)
     setNote({
       ok: false,
       message: `Copying is not available here. The text is selected: copy it manually (Ctrl+C, Cmd+C, or long-press on a phone), paste it into the project chat, review it and send it.${reminder}`,
     })
   }
 
-  return <section style={styles.card} aria-labelledby={`${fieldId}-title`}>
-    <h3 id={`${fieldId}-title`} style={{ margin: 0 }}>{prompt.title}</h3>
-    <p style={{ ...styles.muted, margin: '4px 0 0' }}>{prompt.use}</p>
-    <label htmlFor={fieldId} style={{ position: 'absolute', left: -9999 }}>{prompt.title} prompt text</label>
-    <textarea
-      id={fieldId} ref={area} style={styles.textarea} value={text} maxLength={4000}
-      onChange={event => { setText(event.target.value); setNote(null) }}
-    />
-    <div style={styles.actions}>
-      <button type="button" style={styles.secondary} onClick={copy} disabled={!text.trim()}>Copy prompt</button>
-      {text !== prompt.text && <button type="button" style={styles.secondary} onClick={() => { setText(prompt.text); setNote(null) }}>Reset text</button>}
+  return <li className="ed-prompt">
+    <div className="ed-prompt-top">
+      <div className="ed-prompt-text">
+        <h3>{prompt.title}</h3>
+        <p className="ed-prompt-use">{prompt.use}</p>
+      </div>
+      <button
+        type="button" className="ed-btn ed-btn--accent" onClick={copy} disabled={!text.trim()}
+        aria-label={`Copy prompt: ${prompt.title}`}
+      >Copy prompt</button>
     </div>
-    <p role="status" style={note && !note.ok ? styles.alert : styles.muted}>{note ? note.message : ''}</p>
-  </section>
+    <details open={open} onToggle={event => setOpen(event.currentTarget.open)}>
+      <summary>Edit prompt text</summary>
+      <label htmlFor={fieldId} className="ed-sr">{prompt.title} prompt text</label>
+      <textarea
+        id={fieldId} ref={area} value={text} maxLength={4000}
+        onChange={event => { setText(event.target.value); setNote(null) }}
+      />
+      {text !== prompt.text && <div className="ed-prompt-actions">
+        <button type="button" className="ed-btn" onClick={() => { setText(prompt.text); setNote(null) }}>Reset text</button>
+      </div>}
+    </details>
+    <p role="status" className={note && !note.ok ? 'ed-msg ed-msg--manual' : 'ed-msg'} style={note ? undefined : { margin: 0 }}>
+      {note ? note.message : ''}
+    </p>
+  </li>
 }
 
 export default function App() {
@@ -185,73 +222,83 @@ export default function App() {
   }
 
   if (!runtime) {
-    return <main style={styles.main}>
+    return <main className="ed">
+      <style>{CSS}</style>
       <h1>Evidence Desk</h1>
-      <p role="alert" style={styles.alert}>Projects are unavailable here. Open Evidence Desk from the Möbius app list.</p>
+      <p role="alert" className="ed-alert" style={{ padding: '12px 0 0' }}>
+        Projects are unavailable here. Open Evidence Desk from the Möbius app list.
+      </p>
     </main>
   }
 
-  return <main style={styles.main}>
-    <h1>Evidence Desk</h1>
-    <p style={styles.muted}>
-      Compare research papers with every finding traced to a page and an exact quotation.
-      Each comparison is a Möbius project.
-    </p>
-    <p style={styles.note}>
-      This page creates and opens comparisons and gives you prompt text to copy. It does not run
-      Evidence Desk tools, search for papers, read your PDFs or show project files. All of that happens in
-      the project chat, after you review and send a prompt.
-    </p>
+  return <main className="ed">
+    <style>{CSS}</style>
 
-    <h2>How it works</h2>
-    <ol style={styles.steps}>
-      <li>Create a comparison below, or open one you already have.</li>
-      <li>In the project, upload your PDFs to the inbox/ folder.</li>
-      <li>
-        Copy a prompt from this page, paste it into the project chat, review it and send it. In a project
-        created from this version, the same prompts are also buttons on the project page that open an
-        editable draft.
-      </li>
-      <li>Open the results in the project: the Evidence comparison view, or exports/comparison.html.</li>
-    </ol>
+    <header>
+      <h1>Evidence Desk</h1>
+      <p className="ed-lead">
+        Compare research papers with every finding traced to a page and an exact quotation.
+      </p>
+      <ol className="ed-steps" aria-label="Workflow">
+        <li><b aria-hidden="true">1</b><span>Create or open a comparison below.</span></li>
+        <li><b aria-hidden="true">2</b><span>In the project, upload your PDFs to the inbox/ folder.</span></li>
+        <li><b aria-hidden="true">3</b><span>Copy a prompt, paste it into the project chat, review it and send it.</span></li>
+        <li><b aria-hidden="true">4</b><span>Open the Evidence comparison view or exports/comparison.html in the project.</span></li>
+      </ol>
+      <p className="ed-note">
+        This page creates and opens comparisons and gives you prompt text to copy. It does not run
+        Evidence Desk tools, search for papers, read your PDFs or show project files. All of that happens in
+        the project chat, after you review and send a prompt.
+      </p>
+    </header>
 
-    <h2>Your comparisons</h2>
-    <form style={styles.form} onSubmit={create}>
-      <label htmlFor="comparison-name" style={{ position: 'absolute', left: -9999 }}>Comparison name</label>
-      <input
-        id="comparison-name" style={styles.input} value={name} maxLength={200}
-        placeholder="New comparison name" onChange={event => setName(event.target.value)}
-      />
-      <button type="submit" style={styles.primary} disabled={busy !== ''}>
-        {busy === 'create' ? 'Creating…' : 'New comparison'}
-      </button>
-    </form>
-    {actionError && <p role="alert" style={styles.alert}>{actionError}</p>}
-
-    {projects === null && <p style={styles.muted}>Loading…</p>}
-    {loadError && <div>
-      <p role="alert" style={styles.alert}>{loadError}</p>
-      <button type="button" style={styles.secondary} onClick={load}>Try again</button>
-    </div>}
-    {projects !== null && !loadError && projects.length === 0 &&
-      <p style={styles.muted}>No comparisons yet. Create one above.</p>}
-    {projects !== null && projects.length > 0 && <ul style={styles.list}>
-      {projects.map(project => <li key={project.id} style={styles.row}>
-        <span>
-          <strong>{project.name || 'Untitled comparison'}</strong>
-          {formatDate(project.updated_at) && <span style={styles.muted}> · {formatDate(project.updated_at)}</span>}
-        </span>
-        <button type="button" style={styles.secondary} disabled={busy !== ''} onClick={() => open(project.id)}>
-          {busy === project.id ? 'Opening…' : 'Open project'}
+    <section className="ed-panel" aria-labelledby="comparisons-title">
+      <div className="ed-panel-head">
+        <h2 id="comparisons-title">Your comparisons</h2>
+        {projects !== null && projects.length > 0 && <span className="ed-muted">{projects.length}</span>}
+      </div>
+      <form className="ed-form" onSubmit={create}>
+        <label htmlFor="comparison-name" className="ed-sr">Comparison name</label>
+        <input
+          id="comparison-name" className="ed-input" value={name} maxLength={200}
+          placeholder="New comparison name" onChange={event => setName(event.target.value)}
+        />
+        <button type="submit" className="ed-btn ed-btn--primary" disabled={busy !== ''}>
+          {busy === 'create' ? 'Creating…' : 'New comparison'}
         </button>
-      </li>)}
-    </ul>}
+      </form>
+      {actionError && <p role="alert" className="ed-alert">{actionError}</p>}
 
-    <h2>Prompts for the project chat</h2>
-    <p style={styles.muted}>
-      Edit the text if you like, copy it, then paste it into the chat of the project you are working in.
-      Nothing is sent from this page. The agent never records a finding without a page and an exact quotation.
-    </p>
-    {PROMPTS.map(prompt => <PromptCard key={prompt.id} prompt={prompt} />)}
+      {projects === null && <p className="ed-state">Loading…</p>}
+      {loadError && <div className="ed-state">
+        <p role="alert" style={{ color: 'var(--danger)', marginBottom: 8 }}>{loadError}</p>
+        <button type="button" className="ed-btn" onClick={load}>Try again</button>
+      </div>}
+      {projects !== null && !loadError && projects.length === 0 &&
+        <p className="ed-state">No comparisons yet. Create one above.</p>}
+      {projects !== null && projects.length > 0 && <ul className="ed-list">
+        {projects.map(project => <li key={project.id} className="ed-row">
+          <span className="ed-row-main">
+            <strong className="ed-row-name">{project.name || 'Untitled comparison'}</strong>
+            {formatDate(project.updated_at) && <span className="ed-row-date">Updated {formatDate(project.updated_at)}</span>}
+          </span>
+          <button type="button" className="ed-btn" disabled={busy !== ''} onClick={() => open(project.id)}>
+            {busy === project.id ? 'Opening…' : 'Open project'}
+          </button>
+        </li>)}
+      </ul>}
+    </section>
+
+    <section className="ed-quick" aria-labelledby="prompts-title">
+      <h2 id="prompts-title">Quick prompts for the project chat</h2>
+      <p className="ed-quick-note">
+        Copy a prompt, paste it into the chat of the project you are working in, review it and send it.
+        Nothing is sent from this page. The agent never records a finding without a page and an exact quotation.
+        Projects created from this version also show these prompts as buttons on the project page.
+      </p>
+      <ul className="ed-quick-list">
+        {PROMPTS.map(prompt => <PromptCard key={prompt.id} prompt={prompt} />)}
+      </ul>
+    </section>
   </main>
 }
