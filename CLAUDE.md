@@ -124,6 +124,18 @@ Tests replace `arxiv.transport`; the recorded fixture
 Outbound HTTPS was confirmed from a hosted Möbius chat environment, not yet
 from the Evidence Desk service.
 
+0.6.1: launcher guide and prompts (`index.jsx`). The launcher can only
+use `window.mobius.projects` (templates, list, create, open) and
+`window.mobius.clipboard.writeText` (resolves to a boolean; the shell serves
+it, the frame has `allow="clipboard-write"`, no manifest declaration found
+in the platform code). Tools cannot be called from a frame: `tools/` is
+reserved for agent calls (`routes/app_services.py`), and an app chat made by
+`window.mobius.chat` keeps `project_id` only in `agent_settings_json`, so
+`binding.py` (needs `chats.project_id`) would refuse it. The three launcher
+prompts must stay identical to the template actions with the same id
+(`LauncherTest`); prompts hold no single quote. Template actions reach new
+projects only.
+
 Not done (next stages): linking a registered source to a library record
 (`add_source(reference=…)`), a library section in the comparison view,
 Crossref lookup for publisher DOIs, Semantic Scholar suggestions.

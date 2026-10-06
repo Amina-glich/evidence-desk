@@ -4,15 +4,15 @@ A Möbius Project app for comparing AI/ML research papers with source-grounded
 evidence: every extracted value points to a source, page and exact quote, and
 missing information is labelled “Not reported” instead of guessed.
 
-**Status: 0.6.0.** The app has a manifest, a launcher, a Project template
+**Status: 0.6.1.** The app has a manifest, a launcher, a Project template
 with agent guidance, a service with seven agent tools — `project_status`,
 `add_source` (register an uploaded PDF and extract its page text with
 pypdf), `check_evidence` (deterministic quotation checking),
 `export_comparison` (comparison CSV and view), and arXiv discovery:
 `search_literature`, `lookup_reference` and `save_reference` — and a
 citation-linked **Evidence comparison** Creation. Version 0.4.1 was tested
-end to end in a hosted Möbius instance; 0.5.0 measurements and 0.6.0
-discovery have not been installed yet. Publisher-DOI lookup (Crossref) is
+end to end in a hosted Möbius instance; 0.5.0 measurements, 0.6.0
+discovery and the 0.6.1 launcher guide have not been installed yet. Publisher-DOI lookup (Crossref) is
 not implemented yet.
 
 ## Literature discovery and the reference library
@@ -73,7 +73,7 @@ the exported file.
 | Path | Role |
 |---|---|
 | `mobius.json` | App manifest: service, agent tool, skill, and the **Paper comparison** project template. |
-| `index.jsx` | Launcher: create, list and open this app's projects through `window.mobius.projects`. |
+| `index.jsx` | Launcher: create, list and open this app's projects through `window.mobius.projects`; a short workflow guide; and three editable prompts (find papers, register PDFs and check evidence, export and review) with a Copy prompt button (`window.mobius.clipboard.writeText`, with a select-and-copy-manually fallback). It runs no tools and reads no project files. |
 | `service.py` | Service entry the platform runs once per request (`json-v1`). Delegates to `desk.service`. |
 | `build.sh`, `build_view.py` | Project builder of the Evidence comparison Creation. Runs on the platform's Python (no pypdf), with the same file safety and scope rules as the export. |
 | `requirements.in`, `requirements.lock` | The service's Python dependency (pypdf), hash-pinned; Möbius builds the app's own environment from the lock (`"python": {"lock": ...}`). |
@@ -118,6 +118,20 @@ therefore reads the platform's SQLite database strictly read-only, checks that
 every table and column it uses exists, and refuses the call otherwise. This
 depends on an internal schema; a platform change makes the tools refuse
 rather than act on the wrong project.
+
+## Prompts and project actions
+
+The launcher cannot call the app's tools: they run only for the agent in a
+project chat. It therefore offers three prompts to copy, edit, paste into
+the project's chat, review and send: **Find papers**, **Register PDFs and
+check evidence** and **Export and review the comparison**. The same three
+are Project template actions (buttons on a project's page that open an
+editable draft), together with **Check project setup** and **Plan a
+comparison**. A project snapshots its template when it is created, so only
+projects created from 0.6.1 get the new buttons; the launcher's copy
+buttons work for every project. `tests/test_manifest.py` keeps each launcher
+prompt identical to its action and checks that no prompt weakens an
+evidence rule.
 
 ## Verifying Project binding in Möbius
 

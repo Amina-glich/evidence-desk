@@ -141,6 +141,98 @@ class ManifestTest(unittest.TestCase):
     self.assertNotIn("evidence-desk:", source)
 
 
+LAUNCHER_PROMPT = re.compile(
+  r"\{\s*id: '(?P<id>[a-z-]+)',\s*title: '(?P<title>[^'\n]+)',\s*use: '(?P<use>[^'\n]+)',\s*text: '(?P<text>[^'\n]+)',\s*\}"
+)
+
+
+class LauncherTest(unittest.TestCase):
+  """The launcher's copyable prompts and the template actions say the same, safely."""
+
+  def setUp(self):
+    self.source = (REPO_ROOT / "index.jsx").read_text(encoding="utf-8")
+    self.prompts = {match["id"]: match for match in LAUNCHER_PROMPT.finditer(self.source)}
+    self.actions = {action["id"]: action for action in template(load_manifest())["actions"]}
+
+  def test_the_three_workflow_prompts_are_present(self):
+    self.assertEqual(set(self.prompts), {"find-papers", "register-and-check", "export-review"})
+    self.assertEqual(self.source.count("id: '"), len(self.prompts), "a prompt does not match the parsed shape")
+
+  def test_each_prompt_is_the_template_action_with_the_same_id(self):
+    for prompt_id, match in self.prompts.items():
+      with self.subTest(prompt=prompt_id):
+        self.assertIn(prompt_id, self.actions)
+        self.assertEqual(match["text"], self.actions[prompt_id]["prompt"])
+        self.assertEqual(match["title"], self.actions[prompt_id]["name"])
+
+  def test_actions_stay_within_the_platform_limits(self):
+    # manifest_contract.py: at most 8 actions, each prompt 1-4000 characters.
+    self.assertLessEqual(len(self.actions), 8)
+    for action_id, action in self.actions.items():
+      with self.subTest(action=action_id):
+        self.assertTrue(1 <= len(action["prompt"]) <= 4000)
+        self.assertRegex(action_id, SLUG)
+    for match in self.prompts.values():
+      self.assertLessEqual(len(match["text"]), 700, "keep prompts concise")
+
+  def test_prompts_keep_the_evidence_rules_and_name_only_real_tools(self):
+    texts = {prompt_id: match["text"] for prompt_id, match in self.prompts.items()}
+    for prompt_id, text in texts.items():
+      with self.subTest(prompt=prompt_id):
+        for tool in re.findall(r"\b(?:search_literature|save_reference|add_source|check_evidence|export_comparison|lookup_reference)\b", text):
+          self.assertIn(tool, HANDLERS)
+        for word in re.findall(r"\b[a-z]+_[a-z_]+\b", text):
+          self.assertIn(word, HANDLERS, f"{word} is not an Evidence Desk tool")
+    find, register, export = texts["find-papers"], texts["register-and-check"], texts["export-review"]
+    self.assertIn("search_literature", find)
+    self.assertIn("save_reference only for the papers I choose", find)
+    self.assertIn("metadata, not evidence", find)
+    self.assertIn("do not download PDFs", find)
+    self.assertIn("[describe the topic here]", find)
+    self.assertIn("add_source", register)
+    self.assertIn("check_evidence", register)
+    self.assertIn("Never invent findings", register)
+    self.assertIn("never loosen a quotation", register)
+    self.assertIn("run export_comparison", export)
+    self.assertIn("only when every comparison requirement is met", export)
+    # None of them asks the agent to weaken a rule or to chart or invent anything on its own.
+    for text in texts.values():
+      for forbidden in ("ignore", "skip the check", "estimate", "approximate", "assume"):
+        self.assertNotIn(forbidden, text.lower())
+
+  def test_the_launcher_says_it_does_not_run_tools_or_show_project_files(self):
+    flat = " ".join(self.source.split())
+    self.assertIn("does not run Evidence Desk tools, search for papers, read your PDFs or show project files", flat)
+    self.assertIn("after you review and send a prompt", flat)
+    self.assertIn("Nothing is sent from this page", flat)
+    self.assertIn("paste it into the project chat, review it and send it", flat)
+
+  def test_the_guide_covers_the_whole_workflow(self):
+    flat = " ".join(self.source.split())
+    for step in (
+      "Create a comparison below, or open one you already have",
+      "upload your PDFs to the inbox/ folder",
+      "paste it into the project chat",
+      "Evidence comparison view, or exports/comparison.html",
+    ):
+      self.assertIn(step, flat)
+    self.assertIn("created from this version", flat)  # older projects keep their own template actions
+
+  def test_copying_uses_the_documented_clipboard_and_falls_back_to_manual_copy(self):
+    self.assertIn("window.mobius?.clipboard?.writeText?.(text)", self.source)
+    self.assertIn("=== true", self.source)  # the runtime resolves to a boolean; anything else is a failure
+    self.assertIn("area.current?.select()", self.source)
+    self.assertIn("copy it manually", self.source)
+    # The prompt is selectable text in every case, not only after a failed copy.
+    self.assertRegex(self.source, r"<textarea\b")
+
+  def test_the_launcher_uses_only_documented_platform_apis(self):
+    # It must not reach tools, services or files: only the Projects runtime and the clipboard.
+    for forbidden in ("fetch(", "XMLHttpRequest", "/api/", "/tools/", "window.mobius.chat", "mobius.storage", "postMessage", "dangerouslySetInnerHTML", "localStorage"):
+      self.assertNotIn(forbidden, self.source)
+    self.assertEqual(set(re.findall(r"window\.mobius\??\.(\w+)", self.source)), {"projects", "clipboard"})
+
+
 class GuidanceTest(unittest.TestCase):
   """Starter files and guidance use the vocabulary the code uses."""
 

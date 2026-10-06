@@ -1,7 +1,7 @@
 {
   "id": "evidence-desk",
   "name": "Evidence Desk",
-  "version": "0.6.0",
+  "version": "0.6.1",
   "description": "Compare AI/ML research papers with findings traced to a source, page and exact quotation.",
   "entry": "index.jsx",
   "offline_capable": false,
@@ -195,7 +195,17 @@
         {
           "id": "find-papers",
           "name": "Find papers",
-          "prompt": "Search arXiv for papers on a topic I will describe. Show me the results with their titles, authors, years and arXiv ids, and save to the library only the papers I choose. Do not download any PDF and do not record findings from abstracts."
+          "prompt": "Find papers on arXiv about this topic: [describe the topic here]. Use search_literature and show me the titles, authors, years and arXiv ids. Use save_reference only for the papers I choose. Library records are metadata, not evidence: do not download PDFs and do not record findings from abstracts."
+        },
+        {
+          "id": "register-and-check",
+          "name": "Register PDFs and check evidence",
+          "prompt": "Register the PDFs I uploaded to inbox/ with add_source and list the sources. Then run check_evidence and report every failed quotation and every dimension that is still Not assessed. Fix a quotation only by re-reading its source page. Never invent findings and never loosen a quotation to make it pass."
+        },
+        {
+          "id": "export-review",
+          "name": "Export and review the comparison",
+          "prompt": "Run check_evidence. If no evidence file is invalid, run export_comparison. Then summarize what the comparison shows and which measurements were not plotted, with the reason for each. Plot or compare measurements only when every comparison requirement is met. Tell me to open the Evidence comparison view or exports/comparison.html."
         }
       ]
     }
