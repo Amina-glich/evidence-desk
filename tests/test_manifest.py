@@ -211,9 +211,10 @@ class LauncherTest(unittest.TestCase):
     flat = " ".join(self.source.split())
     for step in (
       "Create or open a comparison below",
-      "upload your PDFs to the inbox/ folder",
+      "open the inbox/ folder in the file list and choose Upload to add your PDFs",
+      "Read synthesis.md (the research summary)",
       "paste it into the project chat, review it and send it",
-      "Evidence comparison view or exports/comparison.html",
+      "or open the comparison view",
     ):
       self.assertIn(step, flat)
     self.assertIn("created from this version", flat)  # older projects keep their own template actions
@@ -241,6 +242,33 @@ class LauncherTest(unittest.TestCase):
     self.assertEqual(set(re.findall(r"var\(--([a-z0-9-]+)\)", css)) - theme, set())
     self.assertNotIn("@import", css)
     self.assertNotIn("url(", css)
+
+  def test_there_is_no_upload_control_only_instructions_for_the_host_file_list(self):
+    # A frame cannot write project files (window.mobius.projects has list/create/open only).
+    for forbidden in ('type="file"', "type='file'", "FileReader", "arrayBuffer", "FormData", "webkitdirectory"):
+      self.assertNotIn(forbidden, self.source)
+    flat = " ".join(self.source.split())
+    self.assertIn("open the inbox/ folder in the file list and choose Upload", flat)
+    self.assertIn("this page cannot upload files for you", flat)
+
+  def test_the_launcher_explains_the_project_files(self):
+    flat = " ".join(self.source.split())
+    self.assertIn("What are the files in a project?", flat)
+    self.assertIn("<strong>synthesis.md</strong>: the readable research summary and comparison", flat)
+    self.assertIn("<strong>README.md</strong> and <strong>desk.json</strong>: support files", flat)
+    self.assertIn("<strong>inbox/</strong>: your papers", flat)
+    self.assertIn("<details className=\"ed-files\">", self.source)  # collapsed: the page stays compact
+
+  def test_quick_prompts_carry_a_purple_accent_from_the_theme(self):
+    css = re.search(r"const CSS = `(.*?)`", self.source, re.S).group(1)
+    quick = re.search(r"\.ed-quick \{([^}]*)\}", css).group(1)
+    prompt = re.search(r"\.ed-prompt \{([^}]*)\}", css).group(1)
+    self.assertIn("border-left: 3px solid var(--accent)", quick)
+    self.assertIn("background: var(--accent-dim)", quick)
+    self.assertIn("var(--accent)", quick)
+    self.assertIn("color-mix(in srgb, var(--accent)", prompt)
+    # A plain border comes first as a fallback for browsers without color-mix.
+    self.assertLess(quick.index("border: 1px solid var(--border)"), quick.index("color-mix"))
 
   def test_copying_uses_the_documented_clipboard_and_falls_back_to_manual_copy(self):
     self.assertIn("window.mobius?.clipboard?.writeText?.(text)", self.source)
@@ -296,6 +324,55 @@ class GuidanceTest(unittest.TestCase):
     self.assertIn("never try to pass one", text)
     for tool in load_manifest()["tools"]:
       self.assertIn(f"- `{tool['name']}`", text)
+
+  def test_owner_readme_starts_with_how_to_add_papers_and_where_to_read_results(self):
+    text = (REPO_ROOT / "templates" / "project-README.md").read_text(encoding="utf-8")
+    start = text.index("## Start here")
+    self.assertLess(start, text.index("## What you will see in the file list"))
+    self.assertLess(start, text.index("## What the statuses mean"))
+    steps = text[start:text.index("## What you will see")]
+    self.assertIn("Open the `inbox/` folder in this project's file list", steps)
+    self.assertIn("**Upload**", steps)
+    self.assertIn("Read the result in `synthesis.md`", steps)
+    self.assertIn("research summary", steps)
+
+  def test_owner_readme_marks_support_files_and_where_uploads_go(self):
+    text = (REPO_ROOT / "templates" / "project-README.md").read_text(encoding="utf-8")
+    table = {line.split("|")[1].strip(" `"): line for line in text.splitlines() if line.startswith("| `")}
+    self.assertIn("Upload them here", table["inbox/"])
+    self.assertIn("research summary and comparison", table["synthesis.md"])
+    for support in ("README.md", "desk.json"):
+      self.assertIn("Support file", table[support])
+    # Every folder and file the project can hold is explained, including the service-written ones.
+    self.assertTrue({"inbox/", "synthesis.md", "exports/", "evidence/", "sources/", "library/", "README.md", "desk.json"} <= set(table))
+    # Starter files are copied once and never updated: no version-specific statements.
+    self.assertNotRegex(text, r"\b0\.\d+\.\d+\b")
+
+  def test_inbox_readme_says_how_to_upload(self):
+    text = (REPO_ROOT / "templates" / "inbox-README.md").read_text(encoding="utf-8")
+    self.assertIn("**Upload**", text)
+    self.assertIn("file list toolbar", text)
+    self.assertIn("keep this `inbox/` folder open", text)
+    self.assertIn("never change or delete them", text)
+    self.assertNotRegex(text, r"\b0\.\d+\.\d+\b")
+
+  def test_starter_brief_presents_itself_as_the_readable_summary(self):
+    lines = (REPO_ROOT / "templates" / "synthesis.md").read_text(encoding="utf-8").splitlines()
+    self.assertEqual(lines[0], "# Research brief")
+    self.assertIn("readable research summary and comparison", " ".join(lines[1:4]))
+
+  def test_agent_guidance_explains_uploads_and_support_files(self):
+    skill = " ".join((REPO_ROOT / "evidence-desk.md").read_text(encoding="utf-8").split())
+    self.assertIn("## Adding papers", skill)
+    self.assertIn("you cannot upload files", skill)
+    self.assertIn("chooses Upload in the file list toolbar", skill)
+    self.assertIn("no PDFs in `inbox/`, tell the owner this instead of searching for papers", skill)
+    self.assertIn("Call `synthesis.md` the research summary, and `desk.json` and `README.md` support files", skill)
+    guidance = template(load_manifest())["guidance"]
+    self.assertIn("opening inbox/ in the project file list and choosing Upload", guidance)
+    self.assertIn("you cannot upload", guidance)
+    self.assertIn("synthesis.md the research summary", guidance)
+    self.assertIn("desk.json and README.md are support files", guidance)
 
   def test_owner_readme_explains_every_status(self):
     text = (REPO_ROOT / "templates" / "project-README.md").read_text(encoding="utf-8")

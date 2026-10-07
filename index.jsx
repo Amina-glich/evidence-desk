@@ -10,7 +10,10 @@
  * tools run only for the agent in a project chat. The prompts below are text
  * the owner copies, reviews and sends there. Copying uses the documented
  * window.mobius.clipboard.writeText (it resolves to a boolean); when it is
- * unavailable the text is selected for a manual copy. Each prompt must stay
+ * unavailable the text is selected for a manual copy. A frame has no API to
+ * write project files, so there is deliberately no upload control here: the
+ * instructions point to the Upload tool of the project file list, which
+ * writes into the folder that is open (inbox/). Each prompt must stay
  * identical to the template action with the same id in mobius.json (tested),
  * and must not contain a single quote.
  */
@@ -55,6 +58,7 @@ const CSS = `
 .ed-lead { margin-top: 4px; color: var(--muted); }
 .ed-steps { list-style: none; margin: 14px 0 0; padding: 0; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px 12px; }
 .ed-steps li { display: flex; gap: 8px; align-items: flex-start; font-size: 13px; color: var(--muted); }
+.ed-steps span { min-width: 0; overflow-wrap: anywhere; }
 .ed-steps b { flex: none; display: grid; place-items: center; width: 20px; height: 20px; border-radius: 50%; background: var(--accent-dim); color: var(--text); font-size: 12px; font-weight: 600; }
 .ed-note { margin-top: 12px; padding-left: 10px; border-left: 2px solid var(--border); font-size: 13px; color: var(--muted); }
 .ed-panel { margin-top: 20px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); overflow: hidden; }
@@ -74,15 +78,20 @@ const CSS = `
 .ed-row-date { font-size: 12px; color: var(--muted); }
 .ed-state { padding: 12px 16px; border-top: 1px solid var(--border); color: var(--muted); }
 .ed-alert { padding: 0 16px 12px; color: var(--danger); }
-.ed-quick { margin-top: 20px; padding: 14px 16px 16px; border: 1px solid var(--border); border-radius: 12px; background: var(--accent-dim); }
+.ed-quick { margin-top: 20px; padding: 14px 16px 16px; border: 1px solid var(--border); border: 1px solid color-mix(in srgb, var(--accent) 30%, var(--border)); border-left: 3px solid var(--accent); border-radius: 12px; background: var(--accent-dim); }
 .ed-quick-note { margin-top: 2px; font-size: 13px; color: var(--muted); }
 .ed-quick-list { list-style: none; margin: 12px 0 0; padding: 0; display: grid; gap: 8px; }
-.ed-prompt { padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); }
+.ed-prompt { padding: 10px 12px; border: 1px solid var(--border); border: 1px solid color-mix(in srgb, var(--accent) 22%, var(--border)); border-radius: 10px; background: var(--surface); }
+.ed-files { margin-top: 12px; font-size: 13px; color: var(--muted); }
+.ed-files summary { padding: 6px 0; cursor: pointer; }
+.ed-files ul { margin: 4px 0 0; padding-left: 18px; }
+.ed-files li { margin: 4px 0; }
+.ed-files strong { color: var(--text); font-weight: 600; }
 .ed-prompt-top { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 12px; }
 .ed-prompt-text { flex: 1 1 200px; min-width: 0; }
 .ed-prompt-use { font-size: 13px; color: var(--muted); }
 .ed-prompt details { margin-top: 4px; }
-.ed-prompt summary { display: flex; align-items: center; min-height: 32px; font-size: 13px; color: var(--muted); cursor: pointer; }
+.ed-prompt summary { padding: 6px 0; font-size: 13px; color: var(--muted); cursor: pointer; }
 .ed-prompt textarea { display: block; width: 100%; min-height: 150px; margin-top: 4px; padding: 8px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); color: inherit; font: inherit; resize: vertical; }
 .ed-prompt-actions { display: flex; gap: 8px; margin-top: 8px; }
 .ed-msg { margin-top: 6px; font-size: 13px; color: var(--muted); }
@@ -241,9 +250,9 @@ export default function App() {
       </p>
       <ol className="ed-steps" aria-label="Workflow">
         <li><b aria-hidden="true">1</b><span>Create or open a comparison below.</span></li>
-        <li><b aria-hidden="true">2</b><span>In the project, upload your PDFs to the inbox/ folder.</span></li>
+        <li><b aria-hidden="true">2</b><span>In the project, open the inbox/ folder in the file list and choose Upload to add your PDFs.</span></li>
         <li><b aria-hidden="true">3</b><span>Copy a prompt, paste it into the project chat, review it and send it.</span></li>
-        <li><b aria-hidden="true">4</b><span>Open the Evidence comparison view or exports/comparison.html in the project.</span></li>
+        <li><b aria-hidden="true">4</b><span>Read synthesis.md (the research summary) or open the comparison view.</span></li>
       </ol>
       <p className="ed-note">
         This page creates and opens comparisons and gives you prompt text to copy. It does not run
@@ -288,6 +297,16 @@ export default function App() {
         </li>)}
       </ul>}
     </section>
+
+    <details className="ed-files">
+      <summary>What are the files in a project?</summary>
+      <ul>
+        <li><strong>inbox/</strong>: your papers. Open it in the project file list and choose Upload to add PDFs; this page cannot upload files for you.</li>
+        <li><strong>synthesis.md</strong>: the readable research summary and comparison. Read this first.</li>
+        <li><strong>README.md</strong> and <strong>desk.json</strong>: support files, a guide and technical settings the agent keeps. You can ignore them.</li>
+        <li>The other folders (sources, evidence, exports, library) are filled in by Evidence Desk and the agent. Do not edit them.</li>
+      </ul>
+    </details>
 
     <section className="ed-quick" aria-labelledby="prompts-title">
       <h2 id="prompts-title">Quick prompts for the project chat</h2>

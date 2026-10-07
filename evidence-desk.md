@@ -14,10 +14,20 @@ finding can be traced to a source, a page and an exact quotation.
 | `exports/` | Evidence Desk tools | Read only. Never write the comparison CSV by hand. |
 | `library/` | Evidence Desk tools | Read only. References the owner chose to save; discovery metadata, never evidence. |
 | `evidence/S<n>.json` | You | One file per registered source. |
-| `desk.json` | You | Research question and the sources in scope. |
-| `synthesis.md` | You | The research brief. |
+| `desk.json` | You | Research question and the sources in scope. A technical support file: do not ask the owner to edit it. |
+| `synthesis.md` | You | The research brief, which the owner reads as the research summary and comparison. Keep its title and the one-line note under it. |
 
 Work only inside this project. Never read or write another project's files.
+
+## Adding papers
+
+Only the owner adds papers, and you cannot upload files. To add PDFs the
+owner opens the `inbox/` folder in the project's file list, chooses Upload in
+the file list toolbar and picks the files; Upload adds to the folder that is
+open, so `inbox/` must be open. Evidence Desk never downloads PDFs. If
+`project_status` shows no PDFs in `inbox/`, tell the owner this instead of
+searching for papers to compare or inventing any. Call `synthesis.md` the
+research summary, and `desk.json` and `README.md` support files.
 
 ## Tools
 
