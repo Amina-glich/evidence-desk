@@ -1,5 +1,4 @@
-/* Evidence Desk launcher: create, list and open this app's Projects, and offer
- * prompt text to copy into a project's chat.
+/* Evidence Desk launcher: create, list and open this app's Projects.
  *
  * Paper files, evidence and briefs live in ordinary Möbius Projects; this
  * frame only reaches them through the shell's app-scoped Projects runtime,
@@ -7,41 +6,16 @@
  * The template is resolved by its local id, never by installation slug.
  *
  * The launcher never runs Evidence Desk tools and never reads project files:
- * tools run only for the agent in a project chat. The prompts below are text
- * the owner copies, reviews and sends there. Copying uses the documented
- * window.mobius.clipboard.writeText (it resolves to a boolean); when it is
- * unavailable the text is selected for a manual copy. A frame has no API to
- * write project files, so there is deliberately no upload control here: the
- * instructions point to the Upload tool of the project file list, which
- * writes into the folder that is open (inbox/). Each prompt must stay
- * identical to the template action with the same id in mobius.json (tested),
- * and must not contain a single quote.
+ * tools run only for the agent in a project chat, where the Paper comparison
+ * template offers its own prompt actions. A frame has no API to write project
+ * files, so there is deliberately no upload control here: the instructions
+ * point to the Upload tool of the project file list, which writes into the
+ * folder that is open (inbox/). Möbius gives apps no way to delete a project,
+ * so there is no Delete control either.
  */
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 
 const TEMPLATE_ID = 'paper-comparison'
-const TOPIC_PLACEHOLDER = '[describe the topic here]'
-
-const PROMPTS = [
-  {
-    id: 'find-papers',
-    title: 'Find papers',
-    use: 'Searches arXiv for a topic and saves only the papers you choose to the project library.',
-    text: 'Find papers on arXiv about this topic: [describe the topic here]. Use search_literature and show me the titles, authors, years and arXiv ids. Use save_reference only for the papers I choose. Library records are metadata, not evidence: do not download PDFs and do not record findings from abstracts.',
-  },
-  {
-    id: 'register-and-check',
-    title: 'Register PDFs and check evidence',
-    use: 'Registers the PDFs you uploaded to inbox/, then checks every recorded quotation.',
-    text: 'Register the PDFs I uploaded to inbox/ with add_source and list the sources. Then run check_evidence and report every failed quotation and every dimension that is still Not assessed. Fix a quotation only by re-reading its source page. Never invent findings and never loosen a quotation to make it pass.',
-  },
-  {
-    id: 'export-review',
-    title: 'Export and review the comparison',
-    use: 'Exports the comparison and explains what it shows, including measurements that were not plotted.',
-    text: 'Run check_evidence. If no evidence file is invalid, run export_comparison. Then summarize what the comparison shows and which measurements were not plotted, with the reason for each. Plot or compare measurements only when every comparison requirement is met. Tell me to open the Evidence comparison view or exports/comparison.html.',
-  },
-]
 
 // Möbius theme variables only (--text, --muted, --border, --surface, --bg, --accent, ...), so the
 // page follows the owner's light or dark theme. Classes are prefixed ed- to stay local to this page.
@@ -83,6 +57,7 @@ const CSS = `
 .ed-card .ed-btn { width: 100%; }
 .ed .ed-state { margin: 14px 18px 18px; padding: 18px; border: 1px dashed var(--border); border-radius: 12px; text-align: center; color: var(--muted); }
 .ed-alert { padding: 10px 18px 0; color: var(--danger); }
+.ed .ed-hint { padding: 12px 18px 0; font-size: 13px; color: var(--muted); }
 .ed-note { margin-top: 12px; padding-left: 10px; border-left: 2px solid var(--border); font-size: 13px; color: var(--muted); }
 .ed-how { margin-top: 18px; border: 1px solid var(--border); border-radius: 12px; font-size: 13px; color: var(--muted); }
 .ed-how summary { padding: 11px 14px; cursor: pointer; font-weight: 600; }
@@ -95,27 +70,13 @@ const CSS = `
 .ed-manage-text { flex: 1 1 260px; min-width: 0; }
 .ed-manage h2 { font-size: 13px; color: var(--muted); }
 .ed-manage p { margin-top: 2px; font-size: 13px; color: var(--muted); }
-.ed-quick { margin-top: 24px; padding: 12px 14px 14px; border: 1px solid var(--border); border: 1px solid color-mix(in srgb, var(--accent) 30%, var(--border)); border-left: 3px solid var(--accent); border-radius: 12px; background: var(--accent-dim); }
-.ed-quick h2 { font-size: 14px; }
-.ed-quick-note { margin-top: 2px; font-size: 13px; color: var(--muted); }
-.ed-quick-list { list-style: none; margin: 12px 0 0; padding: 0; display: grid; gap: 8px; }
-.ed-prompt { padding: 10px 12px; border: 1px solid var(--border); border: 1px solid color-mix(in srgb, var(--accent) 22%, var(--border)); border-radius: 10px; background: var(--surface); }
 .ed-files { margin-top: 12px; font-size: 13px; color: var(--muted); }
 .ed-files summary { padding: 6px 0; cursor: pointer; }
 .ed-files ul { margin: 4px 0 0; padding-left: 18px; }
 .ed-files li { margin: 4px 0; }
 .ed-files strong { color: var(--text); font-weight: 600; }
-.ed-prompt-top { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 12px; }
-.ed-prompt-text { flex: 1 1 200px; min-width: 0; }
-.ed-prompt-use { font-size: 13px; color: var(--muted); }
-.ed-prompt details { margin-top: 4px; }
-.ed-prompt summary { padding: 6px 0; font-size: 13px; color: var(--muted); cursor: pointer; }
-.ed-prompt textarea { display: block; width: 100%; min-height: 150px; margin-top: 4px; padding: 8px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); color: inherit; font: inherit; resize: vertical; }
-.ed-prompt-actions { display: flex; gap: 8px; margin-top: 8px; }
-.ed-msg { margin-top: 6px; font-size: 13px; color: var(--muted); }
-.ed-msg--manual { color: var(--text); }
 @media (max-width: 560px) { .ed-steps { grid-template-columns: repeat(2, minmax(0, 1fr)); } .ed-list { grid-template-columns: minmax(0, 1fr); } }
-@media (max-width: 480px) { .ed-form .ed-btn { flex: 1 1 100%; } .ed-prompt-top .ed-btn { flex: 1 1 100%; } .ed-manage .ed-btn { flex: 1 1 100%; } }
+@media (max-width: 480px) { .ed-form .ed-btn { flex: 1 1 100%; } .ed-manage .ed-btn { flex: 1 1 100%; } }
 @media (max-width: 380px) { .ed-steps { grid-template-columns: 1fr; } .ed-panel-head, .ed-list { padding-left: 12px; padding-right: 12px; } .ed-form, .ed .ed-state { margin-left: 12px; margin-right: 12px; } }
 `
 
@@ -127,71 +88,6 @@ function formatDate(value) {
 
 function byRecent(a, b) {
   return String(b.updated_at || '').localeCompare(String(a.updated_at || ''))
-}
-
-function PromptCard({ prompt }) {
-  const [text, setText] = useState(prompt.text)
-  const [note, setNote] = useState(null)
-  const [open, setOpen] = useState(false)
-  const [selectRequest, setSelectRequest] = useState(0)
-  const area = useRef(null)
-  const fieldId = `prompt-${prompt.id}`
-
-  // The text is selected only once its (collapsed) editor is open and rendered.
-  useEffect(() => {
-    if (!selectRequest) return
-    area.current?.focus()
-    area.current?.select()
-  }, [selectRequest])
-
-  async function copy() {
-    setNote(null)
-    let copied = false
-    try {
-      // Called first, inside the tap itself: the runtime's own copy needs the user gesture.
-      copied = (await window.mobius?.clipboard?.writeText?.(text)) === true
-    } catch {
-      copied = false
-    }
-    const reminder = text.includes(TOPIC_PLACEHOLDER) ? ` Replace ${TOPIC_PLACEHOLDER} with your topic before you send it.` : ''
-    if (copied) {
-      setNote({ ok: true, message: `Copied. Paste it into the project chat, review it and send it.${reminder}` })
-      return
-    }
-    setOpen(true)
-    setSelectRequest(count => count + 1)
-    setNote({
-      ok: false,
-      message: `Copying is not available here. The text is selected: copy it manually (Ctrl+C, Cmd+C, or long-press on a phone), paste it into the project chat, review it and send it.${reminder}`,
-    })
-  }
-
-  return <li className="ed-prompt">
-    <div className="ed-prompt-top">
-      <div className="ed-prompt-text">
-        <h3>{prompt.title}</h3>
-        <p className="ed-prompt-use">{prompt.use}</p>
-      </div>
-      <button
-        type="button" className="ed-btn ed-btn--accent" onClick={copy} disabled={!text.trim()}
-        aria-label={`Copy prompt: ${prompt.title}`}
-      >Copy prompt</button>
-    </div>
-    <details open={open} onToggle={event => setOpen(event.currentTarget.open)}>
-      <summary>Edit prompt text</summary>
-      <label htmlFor={fieldId} className="ed-sr">{prompt.title} prompt text</label>
-      <textarea
-        id={fieldId} ref={area} value={text} maxLength={4000}
-        onChange={event => { setText(event.target.value); setNote(null) }}
-      />
-      {text !== prompt.text && <div className="ed-prompt-actions">
-        <button type="button" className="ed-btn" onClick={() => { setText(prompt.text); setNote(null) }}>Reset text</button>
-      </div>}
-    </details>
-    <p role="status" className={note && !note.ok ? 'ed-msg ed-msg--manual' : 'ed-msg'} style={note ? undefined : { margin: 0 }}>
-      {note ? note.message : ''}
-    </p>
-  </li>
 }
 
 export default function App() {
@@ -320,6 +216,7 @@ export default function App() {
       </div>}
       {projects !== null && !loadError && projects.length === 0 &&
         <p className="ed-state">No comparisons yet. Create one above.</p>}
+      {projects !== null && projects.length > 0 && <p className="ed-hint">Open a project to continue your paper review.</p>}
       {projects !== null && projects.length > 0 && <ul className="ed-list">
         {projects.map(project => <li key={project.id} className="ed-card">
           <span className="ed-card-main">
@@ -349,11 +246,11 @@ export default function App() {
         <ol className="ed-steps" aria-label="Workflow">
           <li><b aria-hidden="true">1</b><span>Create or open a comparison above.</span></li>
           <li><b aria-hidden="true">2</b><span>In the project, open the inbox/ folder in the file list and choose Upload to add your PDFs.</span></li>
-          <li><b aria-hidden="true">3</b><span>Copy a prompt, paste it into the project chat, review it and send it.</span></li>
+          <li><b aria-hidden="true">3</b><span>In the project chat, use the prompt buttons on the project page (projects created from this version) or your own words, and review each request before you send it.</span></li>
           <li><b aria-hidden="true">4</b><span>Read synthesis.md (the research summary) or open the comparison view.</span></li>
         </ol>
         <p className="ed-note">
-          This page creates and opens comparisons and gives you prompt text to copy. It does not run
+          This page creates and opens comparisons. It does not run
           Evidence Desk tools, search for papers, read your PDFs or show project files. All of that happens in
           the project chat, after you review and send a prompt.
         </p>
@@ -369,17 +266,5 @@ export default function App() {
         <li>The other folders (sources, evidence, exports, library) are filled in by Evidence Desk and the agent. Do not edit them.</li>
       </ul>
     </details>
-
-    <section className="ed-quick" aria-labelledby="prompts-title">
-      <h2 id="prompts-title">Quick prompts for the project chat</h2>
-      <p className="ed-quick-note">
-        Optional helpers. Copy a prompt, paste it into the chat of the project you are working in, review it and send it.
-        Nothing is sent from this page. The agent never records a finding without a page and an exact quotation.
-        Projects created from this version also show these prompts as buttons on the project page.
-      </p>
-      <ul className="ed-quick-list">
-        {PROMPTS.map(prompt => <PromptCard key={prompt.id} prompt={prompt} />)}
-      </ul>
-    </section>
   </main></div>
 }

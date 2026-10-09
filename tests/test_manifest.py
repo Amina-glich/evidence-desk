@@ -141,29 +141,20 @@ class ManifestTest(unittest.TestCase):
     self.assertNotIn("evidence-desk:", source)
 
 
-LAUNCHER_PROMPT = re.compile(
-  r"\{\s*id: '(?P<id>[a-z-]+)',\s*title: '(?P<title>[^'\n]+)',\s*use: '(?P<use>[^'\n]+)',\s*text: '(?P<text>[^'\n]+)',\s*\}"
-)
-
-
 class LauncherTest(unittest.TestCase):
-  """The launcher's copyable prompts and the template actions say the same, safely."""
+  """The launcher has no prompts of its own; the template actions it points to stay safe and unchanged."""
 
   def setUp(self):
     self.source = (REPO_ROOT / "index.jsx").read_text(encoding="utf-8")
-    self.prompts = {match["id"]: match for match in LAUNCHER_PROMPT.finditer(self.source)}
     self.actions = {action["id"]: action for action in template(load_manifest())["actions"]}
 
-  def test_the_three_workflow_prompts_are_present(self):
-    self.assertEqual(set(self.prompts), {"find-papers", "register-and-check", "export-review"})
-    self.assertEqual(self.source.count("id: '"), len(self.prompts), "a prompt does not match the parsed shape")
-
-  def test_each_prompt_is_the_template_action_with_the_same_id(self):
-    for prompt_id, match in self.prompts.items():
-      with self.subTest(prompt=prompt_id):
-        self.assertIn(prompt_id, self.actions)
-        self.assertEqual(match["text"], self.actions[prompt_id]["prompt"])
-        self.assertEqual(match["title"], self.actions[prompt_id]["name"])
+  def test_the_template_keeps_its_prompt_actions(self):
+    self.assertEqual(
+      set(self.actions),
+      {"check-setup", "plan", "find-papers", "register-and-check", "export-review"},
+    )
+    for action in self.actions.values():
+      self.assertTrue(action["name"].strip() and action["prompt"].strip())
 
   def test_actions_stay_within_the_platform_limits(self):
     # manifest_contract.py: at most 8 actions, each prompt 1-4000 characters.
@@ -172,11 +163,9 @@ class LauncherTest(unittest.TestCase):
       with self.subTest(action=action_id):
         self.assertTrue(1 <= len(action["prompt"]) <= 4000)
         self.assertRegex(action_id, SLUG)
-    for match in self.prompts.values():
-      self.assertLessEqual(len(match["text"]), 700, "keep prompts concise")
 
   def test_prompts_keep_the_evidence_rules_and_name_only_real_tools(self):
-    texts = {prompt_id: match["text"] for prompt_id, match in self.prompts.items()}
+    texts = {prompt_id: self.actions[prompt_id]["prompt"] for prompt_id in ("find-papers", "register-and-check", "export-review")}
     for prompt_id, text in texts.items():
       with self.subTest(prompt=prompt_id):
         for tool in re.findall(r"\b(?:search_literature|save_reference|add_source|check_evidence|export_comparison|lookup_reference)\b", text):
@@ -204,8 +193,6 @@ class LauncherTest(unittest.TestCase):
     flat = " ".join(self.source.split())
     self.assertIn("does not run Evidence Desk tools, search for papers, read your PDFs or show project files", flat)
     self.assertIn("after you review and send a prompt", flat)
-    self.assertIn("Nothing is sent from this page", flat)
-    self.assertIn("paste it into the project chat, review it and send it", flat)
 
   def test_the_guide_covers_the_whole_workflow(self):
     flat = " ".join(self.source.split())
@@ -213,25 +200,11 @@ class LauncherTest(unittest.TestCase):
       "Create or open a comparison above",
       "open the inbox/ folder in the file list and choose Upload to add your PDFs",
       "Read synthesis.md (the research summary)",
-      "paste it into the project chat, review it and send it",
+      "use the prompt buttons on the project page (projects created from this version) or your own words, and review each request before you send it",
       "or open the comparison view",
     ):
       self.assertIn(step, flat)
     self.assertIn("created from this version", flat)  # older projects keep their own template actions
-
-  def test_prompt_editors_are_collapsed_until_the_owner_opens_them(self):
-    self.assertIn("const [open, setOpen] = useState(false)", self.source)
-    self.assertIn("<details open={open}", self.source)
-    self.assertLess(self.source.index("<details open={open}"), self.source.index("<textarea"))
-    self.assertIn("<summary>Edit prompt text</summary>", self.source)
-    self.assertIn("setOpen(true)", self.source)  # a failed copy opens the editor so its text can be selected
-    self.assertIn("Reset text", self.source)
-    for prompt in self.prompts.values():
-      self.assertLessEqual(len(prompt["use"]), 110, "keep each explanation to one short line")
-
-  def test_every_prompt_has_a_distinctly_named_copy_button(self):
-    self.assertIn("aria-label={`Copy prompt: ${prompt.title}`}", self.source)
-    self.assertIn(">Copy prompt</button>", self.source)
 
   def test_styling_uses_only_mobius_theme_variables(self):
     css = re.search(r"const CSS = `(.*?)`", self.source, re.S).group(1)
@@ -259,31 +232,11 @@ class LauncherTest(unittest.TestCase):
     self.assertIn("<strong>inbox/</strong>: your papers", flat)
     self.assertIn("<details className=\"ed-files\">", self.source)  # collapsed: the page stays compact
 
-  def test_quick_prompts_carry_a_purple_accent_from_the_theme(self):
-    css = re.search(r"const CSS = `(.*?)`", self.source, re.S).group(1)
-    quick = re.search(r"\.ed-quick \{([^}]*)\}", css).group(1)
-    prompt = re.search(r"\.ed-prompt \{([^}]*)\}", css).group(1)
-    self.assertIn("border-left: 3px solid var(--accent)", quick)
-    self.assertIn("background: var(--accent-dim)", quick)
-    self.assertIn("var(--accent)", quick)
-    self.assertIn("color-mix(in srgb, var(--accent)", prompt)
-    # A plain border comes first as a fallback for browsers without color-mix.
-    self.assertLess(quick.index("border: 1px solid var(--border)"), quick.index("color-mix"))
-
-  def test_copying_uses_the_documented_clipboard_and_falls_back_to_manual_copy(self):
-    self.assertIn("window.mobius?.clipboard?.writeText?.(text)", self.source)
-    self.assertIn("=== true", self.source)  # the runtime resolves to a boolean; anything else is a failure
-    self.assertIn("area.current?.select()", self.source)
-    self.assertIn("area.current?.focus()", self.source)
-    self.assertIn("copy it manually", self.source)
-    # The prompt is selectable text in every case, not only after a failed copy.
-    self.assertRegex(self.source, r"<textarea\b")
-
   def test_the_launcher_uses_only_documented_platform_apis(self):
-    # It must not reach tools, services or files: only the Projects runtime and the clipboard.
+    # It must not reach tools, services or files: only the Projects runtime.
     for forbidden in ("fetch(", "XMLHttpRequest", "/api/", "/tools/", "window.mobius.chat", "mobius.storage", "postMessage", "dangerouslySetInnerHTML", "localStorage"):
       self.assertNotIn(forbidden, self.source)
-    self.assertEqual(set(re.findall(r"window\.mobius\??\.(\w+)", self.source)), {"projects", "clipboard"})
+    self.assertEqual(set(re.findall(r"window\.mobius\??\.(\w+)", self.source)), {"projects"})
 
 
 class GuidanceTest(unittest.TestCase):
@@ -474,7 +427,6 @@ class LauncherLayoutTest(unittest.TestCase):
       self.position('className="ed-manage"'),
       self.position('className="ed-how"'),
       self.position('className="ed-files"'),
-      self.position('className="ed-quick"'),
     ]
     self.assertEqual(order, sorted(order))
     # The header holds only the title and one line; the numbered steps are no longer above the comparisons.
@@ -509,17 +461,38 @@ class LauncherLayoutTest(unittest.TestCase):
     # With no comparison yet the guide starts open, so a new owner still sees the workflow first.
     self.assertIn("projects.length === 0 && !loadError) setHowOpen(true)", self.source)
 
-  def test_quick_prompts_are_secondary_helpers_that_are_copied_into_the_project_chat(self):
-    quick = self.source[self.position('className="ed-quick"'):]
-    flat = " ".join(quick.split())
-    self.assertIn("Optional helpers.", flat)
-    self.assertIn("paste it into the chat of the project you are working in", flat)
-    self.assertIn("Nothing is sent from this page", flat)
-    self.assertIn("Quick prompts for the project chat", flat)
-    self.assertEqual(self.source.count("<PromptCard key={prompt.id} prompt={prompt} />"), 1)
-    heading = re.search(r"\.ed-quick h2 \{([^}]*)\}", self.css).group(1)
-    self.assertIn("font-size: 14px", heading)  # smaller than the main card's heading
-    self.assertIn("font-size: 17px", re.search(r"\.ed-panel-head h2 \{([^}]*)\}", self.css).group(1))
+  def test_the_quick_prompts_section_is_gone_and_nothing_replaces_it(self):
+    for removed in ("ed-quick", "PromptCard", "PROMPTS", "Quick prompts", "Copy prompt", "Edit prompt text", "textarea", "clipboard", "useRef", "ed-prompt", "ed-msg"):
+      self.assertNotIn(removed, self.source)
+      self.assertNotIn(removed, self.css)
+    # The page ends with the files explanation: no other instruction block follows it.
+    tail = self.source[self.position('className="ed-files"'):]
+    self.assertNotIn("<section", tail)
+    self.assertEqual(self.source.count("<section"), 2)  # the comparisons card and "Manage projects"
+    self.assertEqual(self.source.count("<details"), 2)  # "How it works" and the files explanation
+
+  def test_one_short_sentence_near_the_projects_says_to_open_a_project(self):
+    sentence = "Open a project to continue your paper review."
+    self.assertEqual(self.source.count(sentence), 1)
+    panel = self.source[self.position('className="ed-panel"'):self.position('className="ed-manage"')]
+    self.assertIn(f'<p className="ed-hint">{sentence}</p>', panel)
+    self.assertLess(panel.index("ed-hint"), panel.index('className="ed-list"'))  # right above the project cards
+    self.assertIn("projects.length > 0 && <p className=\"ed-hint\"", panel)  # shown only when there are projects
+    self.assertLessEqual(len(sentence), 60)
+
+  def test_the_workflow_wording_no_longer_mentions_copying_prompts(self):
+    flat = " ".join(self.source.split())
+    self.assertNotIn("Copy a prompt", flat)
+    self.assertNotIn("prompt text to copy", flat)
+    self.assertIn("use the prompt buttons on the project page (projects created from this version) or your own words", flat)
+
+  def test_the_template_actions_the_launcher_used_to_mirror_are_unchanged(self):
+    manifest = load_manifest()
+    actions = {action["id"]: action for action in template(manifest)["actions"]}
+    self.assertTrue(actions["find-papers"]["prompt"].startswith("Find papers on arXiv about this topic: [describe the topic here]. "))
+    self.assertIn("Run check_evidence. If no evidence file is invalid, run export_comparison.", actions["export-review"]["prompt"])
+    self.assertIn("Register the PDFs I uploaded to inbox/ with add_source", actions["register-and-check"]["prompt"])
+    self.assertEqual(len(actions), 5)
 
   def test_manage_projects_stays_separate_and_understated(self):
     manage = re.search(r"\.ed-manage h2 \{([^}]*)\}", self.css).group(1)
@@ -539,7 +512,7 @@ class LauncherLayoutTest(unittest.TestCase):
     narrow = [line for line in self.css.splitlines() if line.startswith("@media (max-width: 560px)")][0]
     self.assertIn(".ed-list { grid-template-columns: minmax(0, 1fr); }", narrow)
     phone = [line for line in self.css.splitlines() if line.startswith("@media (max-width: 480px)")][0]
-    for part in (".ed-form .ed-btn { flex: 1 1 100%; }", ".ed-manage .ed-btn { flex: 1 1 100%; }", ".ed-prompt-top .ed-btn { flex: 1 1 100%; }"):
+    for part in (".ed-form .ed-btn { flex: 1 1 100%; }", ".ed-manage .ed-btn { flex: 1 1 100%; }"):
       self.assertIn(part, phone)
     self.assertIn("min-width: 0", re.search(r"\.ed-card \{([^}]*)\}", self.css).group(1))
     self.assertIn("overflow-wrap: anywhere", re.search(r"\.ed-row-name \{([^}]*)\}", self.css).group(1))
@@ -556,4 +529,54 @@ class LauncherLayoutTest(unittest.TestCase):
     for forbidden in ("delete(", "remove(", "fetch(", 'type="file"', "FormData", "localStorage", "postMessage", "dangerouslySetInnerHTML"):
       self.assertNotIn(forbidden, self.source)
     self.assertEqual(set(re.findall(r"runtime\.(\w+)\(", self.source)), {"list", "templates", "create", "open", "browse"})
-    self.assertEqual(set(re.findall(r"window\.mobius\??\.(\w+)", self.source)), {"projects", "clipboard"})
+    self.assertEqual(set(re.findall(r"window\.mobius\??\.(\w+)", self.source)), {"projects"})
+
+
+class SuggestedActionsTest(unittest.TestCase):
+  """Möbius offers actions no style or accent property, so the names mark them as optional suggestions."""
+
+  # SHA-256 (first 16 hex digits) of each action prompt as installed before the rename: the prompts must not change.
+  PROMPT_DIGESTS = {
+    "check-setup": "2ec445a1fce11c96",
+    "plan": "c184b8b3fb20b9b9",
+    "find-papers": "4dded154828ad06d",
+    "register-and-check": "2b26e5bf0af76d01",
+    "export-review": "3c0a6588a1ba2719",
+  }
+
+  def setUp(self):
+    self.template = template(load_manifest())
+    self.actions = {action["id"]: action for action in self.template["actions"]}
+
+  def test_the_three_workflow_actions_are_named_as_optional_suggestions(self):
+    self.assertEqual(self.actions["find-papers"]["name"], "Suggested: Find papers")
+    self.assertEqual(self.actions["register-and-check"]["name"], "Suggested: Register PDFs and check evidence")
+    self.assertEqual(self.actions["export-review"]["name"], "Suggested: Export and review")
+    # The other actions keep their names, and only the three above carry the prefix.
+    self.assertEqual(self.actions["check-setup"]["name"], "Check project setup")
+    self.assertEqual(self.actions["plan"]["name"], "Plan a comparison")
+    self.assertEqual([i for i, a in self.actions.items() if a["name"].startswith("Suggested: ")], ["find-papers", "register-and-check", "export-review"])
+
+  def test_action_ids_order_and_prompts_are_unchanged(self):
+    import hashlib
+    self.assertEqual(list(self.actions), ["check-setup", "plan", "find-papers", "register-and-check", "export-review"])
+    for action_id, digest in self.PROMPT_DIGESTS.items():
+      with self.subTest(action=action_id):
+        self.assertEqual(hashlib.sha256(self.actions[action_id]["prompt"].encode("utf-8")).hexdigest()[:16], digest)
+
+  def test_actions_use_only_the_documented_properties_and_no_styling_workaround(self):
+    # Möbius's manifest contract defines id, name and prompt for an action; nothing else is rendered.
+    for action in self.actions.values():
+      self.assertEqual(set(action), {"id", "name", "prompt"})
+      self.assertLessEqual(len(action["name"]), 60)
+    index = (REPO_ROOT / "index.jsx").read_text(encoding="utf-8")
+    self.assertNotIn("Suggested", index)  # the launcher has no copy of the actions
+
+  def test_the_guidance_says_the_prompts_are_optional_and_open_an_editable_draft(self):
+    flat = " ".join(self.template["guidance"].split())
+    sentence = "The prompt buttons on the project page are optional suggested prompts: clicking one opens an editable draft for the user to review before sending."
+    self.assertEqual(flat.count(sentence), 1)
+    self.assertTrue(flat.endswith(sentence))
+    # The earlier guidance is intact.
+    for kept in ("Read the evidence-desk skill before working", "Never invent findings", "keep every [S1 p.5] citation"):
+      self.assertIn(kept, flat)

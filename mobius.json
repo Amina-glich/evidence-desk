@@ -1,7 +1,7 @@
 {
   "id": "evidence-desk",
   "name": "Evidence Desk",
-  "version": "0.6.11",
+  "version": "0.6.12",
   "description": "Compare AI/ML research papers with findings traced to a source, page and exact quotation.",
   "entry": "index.jsx",
   "offline_capable": false,
@@ -151,7 +151,7 @@
       "name": "Paper comparison",
       "kind": "research",
       "description": "Compare research papers on six dimensions, with every finding traced to a page and exact quotation.",
-      "guidance": "Evidence Desk project. Read the evidence-desk skill before working. inbox/ holds the owner's uploads: read only. sources/ and exports/ are written only by Evidence Desk tools: never edit them. You write evidence/, desk.json and synthesis.md. A Reported finding needs a source id, page and exact quotation; otherwise it is Not reported (checked and absent) or Not assessed. Never invent findings. The Evidence comparison Creation and exports/comparison.html show the evidence as a citation-linked matrix; never present values from different papers as directly comparable. search_literature and lookup_reference find arXiv papers; save_reference adds an owner-selected paper to library/, which only Evidence Desk writes. Library metadata is never evidence. The owner adds PDFs by opening inbox/ in the project file list and choosing Upload; you cannot upload, so if inbox/ has no PDFs, say so. Call synthesis.md the research summary; desk.json and README.md are support files. Write the summary briefly, in plain English: lead with a short answer to the research question, keep sentences short, explain each technical term in a few words the first time you use it, and keep every [S1 p.5] citation and Not reported / Not assessed statement.",
+      "guidance": "Evidence Desk project. Read the evidence-desk skill before working. inbox/ holds the owner's uploads: read only. sources/ and exports/ are written only by Evidence Desk tools: never edit them. You write evidence/, desk.json and synthesis.md. A Reported finding needs a source id, page and exact quotation; otherwise it is Not reported (checked and absent) or Not assessed. Never invent findings. The Evidence comparison Creation and exports/comparison.html show the evidence as a citation-linked matrix; never present values from different papers as directly comparable. search_literature and lookup_reference find arXiv papers; save_reference adds an owner-selected paper to library/, which only Evidence Desk writes. Library metadata is never evidence. The owner adds PDFs by opening inbox/ in the project file list and choosing Upload; you cannot upload, so if inbox/ has no PDFs, say so. Call synthesis.md the research summary; desk.json and README.md are support files. Write the summary briefly, in plain English: lead with a short answer to the research question, keep sentences short, explain each technical term in a few words the first time you use it, and keep every [S1 p.5] citation and Not reported / Not assessed statement. The prompt buttons on the project page are optional suggested prompts: clicking one opens an editable draft for the user to review before sending.",
       "skills": [
         "evidence-desk.md"
       ],
@@ -194,17 +194,17 @@
         },
         {
           "id": "find-papers",
-          "name": "Find papers",
+          "name": "Suggested: Find papers",
           "prompt": "Find papers on arXiv about this topic: [describe the topic here]. Use search_literature and show me the titles, authors, years and arXiv ids. Use save_reference only for the papers I choose. Library records are metadata, not evidence: do not download PDFs and do not record findings from abstracts."
         },
         {
           "id": "register-and-check",
-          "name": "Register PDFs and check evidence",
+          "name": "Suggested: Register PDFs and check evidence",
           "prompt": "Register the PDFs I uploaded to inbox/ with add_source and list the sources. Then run check_evidence and report every failed quotation and every dimension that is still Not assessed. Fix a quotation only by re-reading its source page. Never invent findings and never loosen a quotation to make it pass."
         },
         {
           "id": "export-review",
-          "name": "Export and review the comparison",
+          "name": "Suggested: Export and review",
           "prompt": "Run check_evidence. If no evidence file is invalid, run export_comparison. Then summarize what the comparison shows and which measurements were not plotted, with the reason for each. Plot or compare measurements only when every comparison requirement is met. Tell me to open the Evidence comparison view or exports/comparison.html."
         }
       ]

@@ -4,7 +4,7 @@ A Möbius Project app for comparing AI/ML research papers with source-grounded
 evidence: every extracted value points to a source, page and exact quote, and
 missing information is labelled “Not reported” instead of guessed.
 
-**Status: the hosted Möbius app is 0.6.10 (installation confirmed in the Möbius chat); 0.6.11 in this repository is local, uncommitted and not installed.** The app has a manifest, a launcher, a Project template
+**Status: the hosted Möbius app is 0.6.11 (installation confirmed in the Möbius chat); 0.6.12 in this repository is local, uncommitted and not installed.** The app has a manifest, a launcher, a Project template
 with agent guidance, a service with seven agent tools — `project_status`,
 `add_source` (register an uploaded PDF and extract its page text with
 pypdf), `check_evidence` (deterministic quotation checking),
@@ -30,12 +30,15 @@ Overview shows the text of a note instead of the bare word "note". Version
 0.6.10 (installed) moved the launcher's project-deletion guidance into its own
 quiet "Manage projects" section below the comparisons card (Möbius gives apps
 no way to delete a project, so there is still no Delete button). Version 0.6.11
-in this repository is local, uncommitted and not installed: it redesigns the
-launcher as a dashboard (comparisons first, with a prominent New comparison
-action and project cards; the numbered workflow collapsed under "How it works";
-quick prompts as optional helpers copied into the project chat; a subtle
-theme-based background); no behaviour changed. None of 0.6.9 to 0.6.11 has been
-separately verified from this repository. Features added after 0.4.1 were covered by the offline test suite; only what was exercised in
+(installed) redesigned the launcher as a dashboard (comparisons first, with a
+prominent New comparison action and project cards; the numbered workflow
+collapsed under "How it works"; a subtle theme-based background). Version
+0.6.12 in this repository is local, uncommitted and not installed: it removes
+the launcher's "Quick prompts" section, which duplicated the prompt actions
+that the Paper comparison project template already offers once a project is
+open (those template actions are unchanged), and adds one short sentence above
+the project cards: open a project to continue your paper review. None of
+0.6.9 to 0.6.12 has been separately verified from this repository. Features added after 0.4.1 were covered by the offline test suite; only what was exercised in
 the hosted instance counts as live-verified. Publisher-DOI lookup (Crossref) is
 not implemented yet.
 
@@ -103,7 +106,7 @@ the exported file.
 | Path | Role |
 |---|---|
 | `mobius.json` | App manifest: service, agent tool, skill, and the **Paper comparison** project template. |
-| `index.jsx` | Launcher: create, list and open this app's projects through `window.mobius.projects` (and open the Möbius Projects directory with `browse()`; there is no Delete, which Möbius does not offer apps); a short workflow guide with instructions for uploading PDFs to `inbox/` (no upload control: see below), a collapsed explanation of the project files; and three quick prompts (find papers, register PDFs and check evidence, export and review) whose text opens for editing, each with a Copy prompt button (`window.mobius.clipboard.writeText`, with a select-and-copy-manually fallback). It runs no tools and reads no project files. |
+| `index.jsx` | Launcher: create, list and open this app's projects through `window.mobius.projects` (and open the Möbius Projects directory with `browse()`; there is no Delete, which Möbius does not offer apps); a collapsed "How it works" guide with instructions for uploading PDFs to `inbox/` (no upload control: see below) and a collapsed explanation of the project files. It has no prompts of its own (the Paper comparison template offers them inside a project), uses no clipboard API, runs no tools and reads no project files. |
 | `service.py` | Service entry the platform runs once per request (`json-v1`). Delegates to `desk.service`. |
 | `build.sh`, `build_view.py` | Project builder of the Evidence comparison Creation. Runs on the platform's Python (no pypdf), with the same file safety and scope rules as the export. |
 | `requirements.in`, `requirements.lock` | The service's Python dependency (pypdf), hash-pinned; Möbius builds the app's own environment from the lock (`"python": {"lock": ...}`). |
@@ -152,16 +155,21 @@ rather than act on the wrong project.
 ## Prompts and project actions
 
 The launcher cannot call the app's tools: they run only for the agent in a
-project chat. It therefore offers three prompts to copy, edit, paste into
-the project's chat, review and send: **Find papers**, **Register PDFs and
-check evidence** and **Export and review the comparison**. The same three
-are Project template actions (buttons on a project's page that open an
-editable draft), together with **Check project setup** and **Plan a
-comparison**. A project snapshots its template when it is created, so only
-projects created from 0.6.1 get the new buttons; the launcher's copy
-buttons work for every project. `tests/test_manifest.py` keeps each launcher
-prompt identical to its action and checks that no prompt weakens an
-evidence rule.
+project chat. The Paper comparison template therefore offers its prompts as
+Project template actions, buttons on a project's page that open a new chat
+with an editable draft for you to review before sending: **Suggested: Find
+papers**, **Suggested: Register PDFs and check evidence** and **Suggested:
+Export and review**, together with **Check project setup** and **Plan a
+comparison**. The project guidance says these are optional suggested prompts.
+A project snapshots its template when it is created, so only projects created
+from 0.6.1 have the buttons, and the new names reach new projects only. The
+launcher has no prompts of its own (its Quick prompts section was removed in
+0.6.12). Möbius renders a template action as a plain button showing only its
+`name` (`ProjectWorkspace.jsx`); the manifest contract defines only `id`,
+`name` and `prompt` for an action and no style, colour or icon property, so the
+"Suggested:" prefix is how these buttons are marked as optional, with no CSS
+workaround. `tests/test_manifest.py` checks the actions and that no prompt
+weakens an evidence rule.
 
 ## Adding papers and understanding the project files
 
@@ -186,7 +194,7 @@ project is created, so those projects keep their own `README.md`,
 guidance. Installing 0.6.3 does not update those existing project files, and
 the app never overwrites an owner's files to refresh them. What does apply to
 every project, old or new, is the launcher (including its upload
-instructions, file explanation and copyable prompts) and the service and its
+instructions and file explanation) and the service and its
 tools. To get the 0.6.3 starter files, create a new comparison; an existing
 project can keep working as it is.
 

@@ -13,7 +13,7 @@ Möbius Project app for the Möbius Hackathon 2026 Private Pro Desk challenge. R
 
 - Work only in this repository. The sibling `../mobius` checkout is read-only.
 - `mobius.json` declares the app service, agent tools and Paper comparison Project template. Project templates are snapshots at creation, so starter-file, action and guidance changes reach new projects only; the launcher and the service apply to every project.
-- `index.jsx` uses only the app-scoped `window.mobius.projects` and clipboard APIs. It does not read project files or call agent tools, and a frame has no API to write project files, so there is deliberately no upload control: its instructions point to the Upload tool of Möbius's project file list, which writes into the open folder (`inbox/`).
+- `index.jsx` uses only the app-scoped `window.mobius.projects` API (list, templates, create, open, browse); since 0.6.12 it has no clipboard code or prompts of its own. It does not read project files or call agent tools, and a frame has no API to write project files, so there is deliberately no upload control: its instructions point to the Upload tool of Möbius's project file list, which writes into the open folder (`inbox/`).
 - The file list's Upload tool and its Changes +/- indicator are Möbius host UI (`../mobius/frontend/src/components/Projects/ProjectFinder.jsx`). The app cannot hide, restyle or replace them.
 - The service accepts one Möbius `json-v1` request per process. Tool arguments are strict; never accept a model-supplied project id or authority-bearing path.
 - `desk/binding.py` derives the project from trusted `call.chat_id`, following delegated chats, then verifies the live project, app id and canonical `projects/<id>` root. It reads Möbius's internal SQLite schema read-only, checks required tables/columns and fails closed on uncertainty. This is an internal-schema dependency; do not weaken checks to accommodate drift.
@@ -25,8 +25,8 @@ Möbius Project app for the Möbius Hackathon 2026 Private Pro Desk challenge. R
 
 The app is fully implemented: manifest, launcher, Paper comparison template and agent guidance, service entrypoint, project binding and status, PDF registration, evidence checking, CSV and citation-linked HTML comparison, structured measurement comparison, arXiv discovery and a project reference library.
 
-- Hosted Möbius instance: `0.6.10` is installed (app id 10; commit `f5bcc97`), as confirmed in the Möbius chat. Behaviour there beyond that report is not verified from this repository.
-- Local code (`mobius.json`): `0.6.11`, the launcher redesign. It is not committed, pushed or installed; nothing of it has been exercised in the hosted instance.
+- Hosted Möbius instance: `0.6.11` is installed (app id 10; commit `57c85a5`), as confirmed in the Möbius chat. Behaviour there beyond that report is not verified from this repository.
+- Local code (`mobius.json`): `0.6.12`, removes the launcher's Quick prompts. It is not committed, pushed or installed; nothing of it has been exercised in the hosted instance.
 - The organizer confirmed that a Möbius MCP connector is not required; the goal is a Claude for Science style Project app. Any note saying the app is at an initial implementation stage is outdated.
 - Do not add Crossref or other new external API calls until the owner asks for them. Do not download PDFs; owners upload papers to `inbox/`.
 
@@ -44,7 +44,8 @@ Version history (what changed, not the current state):
 - 0.6.8 (installed) also lets different explicitly reported metric definitions share a chart: each point is labelled beside it with its own variant and metric definition, the chart says when definitions differ, and warns that results with different evaluation setups are descriptive and must not be ranked as a head-to-head comparison (see the measurement rules below).
 - 0.6.9 (installed): chart labels are full text (HTML rows, wrapping, stacked on narrow screens) and each stays in the row of its own point and citation; a project that records measurements and, at most, findings for the results dimension (every other dimension has no status, note, absence or contradiction) gets a short measurement overview with a Metrics and reported results column (`_is_measurement_focused`); the results findings stay visible and the other dimensions are collapsed, unchanged; any status, note, absence or contradiction elsewhere keeps the full six-dimension matrix; the Overview shows `Note: <text>` instead of the bare word "note". The "Changes +n/-n" indicator is Möbius shell UI and is not touched. No Delete action: Möbius exposes no project-delete API to apps, so the launcher explains where to delete and offers `browse()` (guarded by `LauncherDeleteTest`: only `list`, `templates`, `create`, `open`, `browse` may be called).
 - 0.6.10 (installed): the launcher's deletion guidance is a separate, quiet "Manage projects" section below the comparisons card (heading, one sentence, "Open Möbius Projects" button via `browse()`, stacked on narrow screens); still no Delete button, because Möbius offers apps no project-delete API.
-- 0.6.11 (local, unreleased): launcher redesign in `index.jsx` only, no behaviour change: "Your comparisons" first with a prominent primary New comparison action and project cards; the numbered workflow is collapsed under "How it works" (open by default when there are no comparisons); quick prompts are optional helpers that are copied into the project chat; a subtle gradient background from theme variables; "Manage projects" stays separate. Covered by `LauncherLayoutTest`.
+- 0.6.11 (installed): launcher redesign in `index.jsx` only, no behaviour change: "Your comparisons" first with a prominent primary New comparison action and project cards; the numbered workflow is collapsed under "How it works" (open by default when there are no comparisons); quick prompts are optional helpers that are copied into the project chat; a subtle gradient background from theme variables; "Manage projects" stays separate. Covered by `LauncherLayoutTest`.
+- 0.6.12 (local, unreleased): the launcher's "Quick prompts for the project chat" section, its `PROMPTS`/`PromptCard` code and clipboard use are removed, because they duplicated the template's prompt actions available inside a project; the template action prompts in `mobius.json` are unchanged; the three suggested actions are now named "Suggested: Find papers", "Suggested: Register PDFs and check evidence" and "Suggested: Export and review", and the template guidance says they are optional suggested prompts that open an editable draft. Möbius (read-only check of `manifest_contract.py` and `ProjectWorkspace.jsx`) defines only `id`, `name` and `prompt` for an action and renders just its `name`: there is no documented style or accent-colour property, so no CSS workaround is used. One short sentence above the project cards says to open a project to continue the paper review; step 3 of "How it works" now points to the project page's prompt buttons (projects created from this version) or the owner's own words. Dashboard, background, cards, "How it works", file explanation and "Manage projects" are unchanged.
 
 ## Development rules
 
@@ -73,7 +74,7 @@ Adding or changing things:
 
 - New tool: spec in `desk/tool_args.py`, handler, `HANDLERS`, manifest entry, guidance, tests. `mobius.json` `tools` must equal `HANDLERS`, and every `desk/*.py` must be listed in `source_files` (both tested).
 - Guidance (`evidence-desk.md`), starter files (`templates/`) and `desk/vocabulary.py` must agree (`tests/test_manifest.py`). Starter files are copied once and never updated: keep version-specific statements out of `templates/`.
-- Launcher prompts in `index.jsx` must stay identical to the template actions with the same id in `mobius.json` (`LauncherTest`); they hold no single quote.
+- The launcher has no prompts (removed in 0.6.12); the prompt actions live in the Paper comparison template in `mobius.json` and stay unchanged. `LauncherTest` keeps checking those actions (ids, limits, evidence rules, real tool names).
 
 ## Python dependencies
 
@@ -105,11 +106,11 @@ docker run --rm -v "$PWD":/work:ro -w /work -e PYTHONDONTWRITEBYTECODE=1 \
 
 Expected skips, to report with their reason:
 
-- On Windows (and any non-Linux system) the file-safety, locking, status and service tests are skipped, because they need Linux `O_NOFOLLOW`, `dir_fd` and `flock` ("needs Linux O_NOFOLLOW, dir_fd and flock"). 75 skipped at 363 tests.
+- On Windows (and any non-Linux system) the file-safety, locking, status and service tests are skipped, because they need Linux `O_NOFOLLOW`, `dir_fd` and `flock` ("needs Linux O_NOFOLLOW, dir_fd and flock"). 75 skipped at 365 tests.
 - On Linux exactly 2 tests skip: the platform-refusal tests, which are "only meaningful where the APIs are missing".
 - Without `pypdf` several test modules fail to import. Do not report such a run as a passing suite.
 
-Last full runs with the locked dependencies (0.6.11, 2026-10-09, uncommitted): Windows, Python 3.13.6 in a throwaway venv, 363 tests OK with 75 skipped; Linux, `python:3.12-slim-trixie` (Python 3.12.15), 363 tests OK with 2 skipped. The earlier `--network none` run was not repeated.
+Last full runs with the locked dependencies (0.6.12, 2026-10-09, uncommitted): Windows, Python 3.13.6 in a throwaway venv, 365 tests OK with 75 skipped; Linux, `python:3.12-slim-trixie` (Python 3.12.15), 365 tests OK with 2 skipped. The earlier `--network none` run was not repeated.
 
 ## Validating the app with the Möbius compiler
 
