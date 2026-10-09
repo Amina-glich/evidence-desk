@@ -210,7 +210,7 @@ class LauncherTest(unittest.TestCase):
   def test_the_guide_covers_the_whole_workflow(self):
     flat = " ".join(self.source.split())
     for step in (
-      "Create or open a comparison below",
+      "Create or open a comparison above",
       "open the inbox/ folder in the file list and choose Upload to add your PDFs",
       "Read synthesis.md (the research summary)",
       "paste it into the project chat, review it and send it",
@@ -455,3 +455,105 @@ class LauncherDeleteTest(unittest.TestCase):
     self.assertTrue(quiet and all("var(--muted)" in line for line in quiet))
     self.assertNotRegex(" ".join(line for line in css.splitlines() if "ed-manage" in line), r"#[0-9a-fA-F]{3,8}\b|rgb\(")
     self.assertRegex(css, r"@media \(max-width: 480px\)[^\n]*\.ed-manage \.ed-btn \{ flex: 1 1 100%; \}")
+
+
+class LauncherLayoutTest(unittest.TestCase):
+  """The launcher reads as a dashboard: comparisons first, guidance and prompts as quiet helpers."""
+
+  def setUp(self):
+    self.source = (REPO_ROOT / "index.jsx").read_text(encoding="utf-8")
+    self.css = re.search(r"const CSS = `(.*?)`", self.source, re.S).group(1)
+
+  def position(self, marker):
+    self.assertIn(marker, self.source)
+    return self.source.index(marker)
+
+  def test_the_page_order_puts_the_comparisons_first(self):
+    order = [
+      self.position('aria-labelledby="comparisons-title"'),
+      self.position('className="ed-manage"'),
+      self.position('className="ed-how"'),
+      self.position('className="ed-files"'),
+      self.position('className="ed-quick"'),
+    ]
+    self.assertEqual(order, sorted(order))
+    # The header holds only the title and one line; the numbered steps are no longer above the comparisons.
+    self.assertLess(self.position('className="ed-hero"'), order[0])
+    self.assertLess(self.position("<h1>Evidence Desk</h1>"), order[0])
+    self.assertGreater(self.position('className="ed-steps"'), order[0])
+
+  def test_new_comparison_is_the_prominent_primary_action_inside_the_main_card(self):
+    panel = self.source[self.position('className="ed-panel"'):self.position('className="ed-manage"')]
+    self.assertIn('className="ed-btn ed-btn--primary"', panel)
+    self.assertIn("'New comparison'", panel)
+    self.assertIn('<label htmlFor="comparison-name"', panel)
+    self.assertIn('id="comparison-name"', panel)
+    primary = re.search(r"\.ed-btn--primary \{([^}]*)\}", self.css).group(1)
+    self.assertIn("font-weight: 600", primary)
+    self.assertIn("var(--accent)", primary)
+    # The create form is a tinted band, and existing projects are cards in a responsive grid.
+    self.assertIn("background: var(--accent-dim)", re.search(r"\.ed-form \{([^}]*)\}", self.css).group(1))
+    self.assertIn('className="ed-card"', panel)
+    self.assertIn("grid-template-columns: repeat(auto-fill, minmax(240px, 1fr))", re.search(r"\.ed-list \{([^}]*)\}", self.css).group(1))
+    self.assertIn("Open project", panel)
+
+  def test_the_numbered_workflow_is_collapsed_under_how_it_works_and_keeps_its_wording(self):
+    self.assertIn("const [howOpen, setHowOpen] = useState(false)", self.source)
+    start = self.position('<details className="ed-how"')
+    how = self.source[start:self.source.index("</details>", start)]
+    self.assertIn("<summary>How it works</summary>", how)
+    self.assertIn('<ol className="ed-steps" aria-label="Workflow">', how)
+    self.assertIn("does not run", " ".join(how.split()))
+    for number in "1234":
+      self.assertIn(f'<b aria-hidden="true">{number}</b>', how)
+    # With no comparison yet the guide starts open, so a new owner still sees the workflow first.
+    self.assertIn("projects.length === 0 && !loadError) setHowOpen(true)", self.source)
+
+  def test_quick_prompts_are_secondary_helpers_that_are_copied_into_the_project_chat(self):
+    quick = self.source[self.position('className="ed-quick"'):]
+    flat = " ".join(quick.split())
+    self.assertIn("Optional helpers.", flat)
+    self.assertIn("paste it into the chat of the project you are working in", flat)
+    self.assertIn("Nothing is sent from this page", flat)
+    self.assertIn("Quick prompts for the project chat", flat)
+    self.assertEqual(self.source.count("<PromptCard key={prompt.id} prompt={prompt} />"), 1)
+    heading = re.search(r"\.ed-quick h2 \{([^}]*)\}", self.css).group(1)
+    self.assertIn("font-size: 14px", heading)  # smaller than the main card's heading
+    self.assertIn("font-size: 17px", re.search(r"\.ed-panel-head h2 \{([^}]*)\}", self.css).group(1))
+
+  def test_manage_projects_stays_separate_and_understated(self):
+    manage = re.search(r"\.ed-manage h2 \{([^}]*)\}", self.css).group(1)
+    self.assertIn("var(--muted)", manage)
+    self.assertIn("font-size: 13px", manage)
+    self.assertLess(self.position('className="ed-panel"'), self.position('className="ed-manage"'))
+    self.assertNotIn("Open Möbius Projects", self.source[:self.position('className="ed-manage"')])
+
+  def test_the_background_is_a_subtle_gradient_from_theme_variables(self):
+    shell = re.search(r"\.ed-shell \{([^}]*)\}", self.css).group(1)
+    self.assertIn("radial-gradient(", shell)
+    self.assertIn("var(--accent-dim)", shell)
+    self.assertNotRegex(shell, r"#[0-9a-fA-F]{3,8}\b|\brgba?\(")
+    self.assertEqual(self.source.count('className="ed-shell"'), 2)  # the normal page and the no-runtime fallback
+
+  def test_phone_layout_stacks_cards_and_buttons(self):
+    narrow = [line for line in self.css.splitlines() if line.startswith("@media (max-width: 560px)")][0]
+    self.assertIn(".ed-list { grid-template-columns: minmax(0, 1fr); }", narrow)
+    phone = [line for line in self.css.splitlines() if line.startswith("@media (max-width: 480px)")][0]
+    for part in (".ed-form .ed-btn { flex: 1 1 100%; }", ".ed-manage .ed-btn { flex: 1 1 100%; }", ".ed-prompt-top .ed-btn { flex: 1 1 100%; }"):
+      self.assertIn(part, phone)
+    self.assertIn("min-width: 0", re.search(r"\.ed-card \{([^}]*)\}", self.css).group(1))
+    self.assertIn("overflow-wrap: anywhere", re.search(r"\.ed-row-name \{([^}]*)\}", self.css).group(1))
+
+  def test_accessibility_basics_are_kept(self):
+    self.assertIn('<svg viewBox="0 0 24 24"', self.source)
+    self.assertIn('className="ed-mark" aria-hidden="true"', self.source)
+    self.assertIn(".ed :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }", self.css)
+    self.assertIn('aria-label={`${projects.length} comparisons`}', self.source)
+    self.assertIn('role="alert"', self.source)
+    self.assertEqual(len(re.findall(r"<h1>", self.source)), 2)  # the page and the no-runtime fallback
+
+  def test_the_redesign_adds_no_new_capability(self):
+    for forbidden in ("delete(", "remove(", "fetch(", 'type="file"', "FormData", "localStorage", "postMessage", "dangerouslySetInnerHTML"):
+      self.assertNotIn(forbidden, self.source)
+    self.assertEqual(set(re.findall(r"runtime\.(\w+)\(", self.source)), {"list", "templates", "create", "open", "browse"})
+    self.assertEqual(set(re.findall(r"window\.mobius\??\.(\w+)", self.source)), {"projects", "clipboard"})

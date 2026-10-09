@@ -4,7 +4,7 @@ A Möbius Project app for comparing AI/ML research papers with source-grounded
 evidence: every extracted value points to a source, page and exact quote, and
 missing information is labelled “Not reported” instead of guessed.
 
-**Status: the hosted Möbius app is 0.6.9 (installation confirmed in the Möbius chat); 0.6.10 in this repository is local, uncommitted and not installed.** The app has a manifest, a launcher, a Project template
+**Status: the hosted Möbius app is 0.6.10 (installation confirmed in the Möbius chat); 0.6.11 in this repository is local, uncommitted and not installed.** The app has a manifest, a launcher, a Project template
 with agent guidance, a service with seven agent tools — `project_status`,
 `add_source` (register an uploaded PDF and extract its page text with
 pypdf), `check_evidence` (deterministic quotation checking),
@@ -12,7 +12,7 @@ pypdf), `check_evidence` (deterministic quotation checking),
 `search_literature`, `lookup_reference` and `save_reference` — and a
 citation-linked **Evidence comparison** Creation. Version 0.4.1 was tested
 end to end in a hosted Möbius instance. The owner confirmed in the Möbius chat
-that 0.6.9 is installed there. Recent versions: 0.6.6 reads a source's title
+that 0.6.10 is installed there. Recent versions: 0.6.6 reads a source's title
 from its stored first-page text, skipping a recognized publisher permission,
 licence or copyright notice (the PDF file name stays the fallback); 0.6.7 lets
 different model or training variants share a chart as labelled points; 0.6.8
@@ -20,19 +20,22 @@ also lets different metric definitions share a descriptive chart, each point
 labelled with its own definition and variant, with a plain warning that results
 with different evaluation setups must not be ranked as a head-to-head
 comparison (task, dataset, split, metric and unit must still match exactly).
-Version 0.6.9 (commit `fb0c3fa`) is a polish update, installed in the hosted
-app; how it behaves there has not been separately verified from this
-repository: chart labels are shown in full (wrapping, stacked above
+Version 0.6.9 (commit `fb0c3fa`) is a polish update: chart labels are shown in full (wrapping, stacked above
 their point on narrow screens); a project that records measurements, with at most
 Metrics and reported results as a finding and the other five dimensions Not
 assessed, gets a short measurement overview instead of a mostly empty
 six-dimension matrix (any status, note, absence or contradiction elsewhere
 keeps the full matrix); the
 Overview shows the text of a note instead of the bare word "note". Version
-0.6.10 in this repository is local, uncommitted and not installed: it moves the
-launcher's project-deletion guidance into its own quiet "Manage projects"
-section below the comparisons card (Möbius gives apps no way to delete a
-project, so there is still no Delete button). Features added after 0.4.1 were covered by the offline test suite; only what was exercised in
+0.6.10 (installed) moved the launcher's project-deletion guidance into its own
+quiet "Manage projects" section below the comparisons card (Möbius gives apps
+no way to delete a project, so there is still no Delete button). Version 0.6.11
+in this repository is local, uncommitted and not installed: it redesigns the
+launcher as a dashboard (comparisons first, with a prominent New comparison
+action and project cards; the numbered workflow collapsed under "How it works";
+quick prompts as optional helpers copied into the project chat; a subtle
+theme-based background); no behaviour changed. None of 0.6.9 to 0.6.11 has been
+separately verified from this repository. Features added after 0.4.1 were covered by the offline test suite; only what was exercised in
 the hosted instance counts as live-verified. Publisher-DOI lookup (Crossref) is
 not implemented yet.
 

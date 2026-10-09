@@ -25,8 +25,8 @@ Möbius Project app for the Möbius Hackathon 2026 Private Pro Desk challenge. R
 
 The app is fully implemented: manifest, launcher, Paper comparison template and agent guidance, service entrypoint, project binding and status, PDF registration, evidence checking, CSV and citation-linked HTML comparison, structured measurement comparison, arXiv discovery and a project reference library.
 
-- Hosted Möbius instance: `0.6.9` is installed (app id 10; commit `fb0c3fa`), as confirmed in the Möbius chat. Behaviour there beyond that report is not verified from this repository.
-- Local code (`mobius.json`): `0.6.10`, a launcher layout refinement. It is not committed, pushed or installed; nothing of it has been exercised in the hosted instance.
+- Hosted Möbius instance: `0.6.10` is installed (app id 10; commit `f5bcc97`), as confirmed in the Möbius chat. Behaviour there beyond that report is not verified from this repository.
+- Local code (`mobius.json`): `0.6.11`, the launcher redesign. It is not committed, pushed or installed; nothing of it has been exercised in the hosted instance.
 - The organizer confirmed that a Möbius MCP connector is not required; the goal is a Claude for Science style Project app. Any note saying the app is at an initial implementation stage is outdated.
 - Do not add Crossref or other new external API calls until the owner asks for them. Do not download PDFs; owners upload papers to `inbox/`.
 
@@ -43,7 +43,8 @@ Version history (what changed, not the current state):
 - 0.6.7 (installed) let different model or training variants share a chart as separately labelled points.
 - 0.6.8 (installed) also lets different explicitly reported metric definitions share a chart: each point is labelled beside it with its own variant and metric definition, the chart says when definitions differ, and warns that results with different evaluation setups are descriptive and must not be ranked as a head-to-head comparison (see the measurement rules below).
 - 0.6.9 (installed): chart labels are full text (HTML rows, wrapping, stacked on narrow screens) and each stays in the row of its own point and citation; a project that records measurements and, at most, findings for the results dimension (every other dimension has no status, note, absence or contradiction) gets a short measurement overview with a Metrics and reported results column (`_is_measurement_focused`); the results findings stay visible and the other dimensions are collapsed, unchanged; any status, note, absence or contradiction elsewhere keeps the full six-dimension matrix; the Overview shows `Note: <text>` instead of the bare word "note". The "Changes +n/-n" indicator is Möbius shell UI and is not touched. No Delete action: Möbius exposes no project-delete API to apps, so the launcher explains where to delete and offers `browse()` (guarded by `LauncherDeleteTest`: only `list`, `templates`, `create`, `open`, `browse` may be called).
-- 0.6.10 (local, unreleased): the launcher's deletion guidance is a separate, quiet "Manage projects" section below the comparisons card (heading, one sentence, "Open Möbius Projects" button via `browse()`, stacked on narrow screens); still no Delete button, because Möbius offers apps no project-delete API.
+- 0.6.10 (installed): the launcher's deletion guidance is a separate, quiet "Manage projects" section below the comparisons card (heading, one sentence, "Open Möbius Projects" button via `browse()`, stacked on narrow screens); still no Delete button, because Möbius offers apps no project-delete API.
+- 0.6.11 (local, unreleased): launcher redesign in `index.jsx` only, no behaviour change: "Your comparisons" first with a prominent primary New comparison action and project cards; the numbered workflow is collapsed under "How it works" (open by default when there are no comparisons); quick prompts are optional helpers that are copied into the project chat; a subtle gradient background from theme variables; "Manage projects" stays separate. Covered by `LauncherLayoutTest`.
 
 ## Development rules
 
@@ -104,11 +105,11 @@ docker run --rm -v "$PWD":/work:ro -w /work -e PYTHONDONTWRITEBYTECODE=1 \
 
 Expected skips, to report with their reason:
 
-- On Windows (and any non-Linux system) the file-safety, locking, status and service tests are skipped, because they need Linux `O_NOFOLLOW`, `dir_fd` and `flock` ("needs Linux O_NOFOLLOW, dir_fd and flock"). 75 skipped at 354 tests.
+- On Windows (and any non-Linux system) the file-safety, locking, status and service tests are skipped, because they need Linux `O_NOFOLLOW`, `dir_fd` and `flock` ("needs Linux O_NOFOLLOW, dir_fd and flock"). 75 skipped at 363 tests.
 - On Linux exactly 2 tests skip: the platform-refusal tests, which are "only meaningful where the APIs are missing".
 - Without `pypdf` several test modules fail to import. Do not report such a run as a passing suite.
 
-Last full runs with the locked dependencies (0.6.10, 2026-10-09, uncommitted): Windows, Python 3.13.6 in a throwaway venv, 354 tests OK with 75 skipped; Linux, `python:3.12-slim-trixie` (Python 3.12.15), 354 tests OK with 2 skipped. The earlier `--network none` run was not repeated.
+Last full runs with the locked dependencies (0.6.11, 2026-10-09, uncommitted): Windows, Python 3.13.6 in a throwaway venv, 363 tests OK with 75 skipped; Linux, `python:3.12-slim-trixie` (Python 3.12.15), 363 tests OK with 2 skipped. The earlier `--network none` run was not repeated.
 
 ## Validating the app with the Möbius compiler
 
