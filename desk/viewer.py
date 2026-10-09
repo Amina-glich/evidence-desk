@@ -105,6 +105,7 @@ table.overview { border-collapse: collapse; min-width: 100%; }
 .flags { display: block; margin-top: 4px; font-size: 0.8rem; color: var(--ed-muted); }
 .flag-bad { color: var(--ed-bad); font-weight: 600; }
 .flag-warn { color: var(--ed-warn); font-weight: 600; }
+.flag-note { display: block; font-style: italic; }
 .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; }
 .card { border: 1px solid var(--ed-border); border-radius: 8px; padding: 12px 14px; background: var(--ed-bg); }
 .card:target, li:target, .card.is-target, li.is-target { outline: 2px solid var(--ed-accent); outline-offset: 2px; }
@@ -133,7 +134,18 @@ table.measures { border-collapse: collapse; min-width: 100%; font-size: 0.88rem;
 .chart { margin: 16px 0 24px; padding: 12px 14px; border: 1px solid var(--ed-border); border-radius: 8px; }
 .chart.is-target { outline: 2px solid var(--ed-accent); outline-offset: 2px; }
 .chart figcaption { margin-bottom: 8px; }
-.chart svg { width: 100%; min-width: 480px; height: auto; max-width: 720px; display: block; }
+.plot { max-width: 760px; }
+.plot-rows { list-style: none; margin: 0; padding: 0; }
+.plot-row, .plot-axis { display: grid; grid-template-columns: minmax(150px, 40%) minmax(0, 1fr); gap: 4px 12px; align-items: center; }
+.plot-row { padding: 6px 0; border-top: 1px solid var(--ed-border); }
+.plot-label { min-width: 0; overflow-wrap: anywhere; }
+.plot-label strong { display: block; }
+.plot-def { display: block; font-size: 0.85rem; color: var(--ed-muted); }
+.plot svg { width: 100%; height: auto; display: block; }
+@media (max-width: 560px) {
+  .plot-row, .plot-axis { grid-template-columns: minmax(0, 1fr); }
+  .plot-axis .plot-spacer { display: none; }
+}
 .chart .axis { stroke: var(--ed-border); stroke-width: 1; }
 .chart .guide { stroke: var(--ed-border); stroke-width: 1; stroke-dasharray: 2 4; }
 .chart .dot { fill: var(--ed-accent); }
@@ -217,6 +229,18 @@ def _source_name(report: SourceReport) -> str:
   return f"{_e(report.source_id)} · {_e(title)}"
 
 
+NOTE_EXCERPT_CHARS = 90
+
+
+def _excerpt(text: str, limit: int) -> str:
+  """The start of a text on a word boundary, with an ellipsis when cut; the full
+  text is always in the finding the cell links to."""
+  text = " ".join(text.split())
+  if len(text) <= limit:
+    return text
+  return text[:limit].rsplit(" ", 1)[0].rstrip(",;:") + "…"
+
+
 def _flags(report: SourceReport, dimension: str) -> str:
   finding = report.findings.get(dimension)
   flags = []
@@ -230,7 +254,7 @@ def _flags(report: SourceReport, dimension: str) -> str:
     count = len(finding.absences)
     flags.append(f"{count} checked absence{'s' if count != 1 else ''}")
   if finding is not None and finding.note:
-    flags.append("note")
+    flags.append(f'<span class="flag-note">Note: {_e(_excerpt(finding.note, NOTE_EXCERPT_CHARS))}</span>')
   return f'<span class="flags">{" · ".join(flags)}</span>' if flags else ""
 
 
@@ -362,40 +386,49 @@ def value_with_unit(value_text: str, unit: str) -> str:
   return value_text if value_text.endswith(unit) else f"{value_text} {unit}"
 
 
-def _chart_svg(chart: Chart, cites: _MeasurementCitations) -> str:
-  width, left, right, row, top = 780, 250, 110, 50, 16
+PLOT_WIDTH, PLOT_LEFT, PLOT_RIGHT, PLOT_ROW = 400, 10, 70, 34
+
+
+def _plot(chart: Chart, cites: _MeasurementCitations) -> str:
+  """One row per point: its full label as wrapping text beside (on a narrow
+  screen, above) a track that shares one scale; the point links to its quotation."""
   values = [point.number for point in chart.points]
   low, high = min(values), max(values)
   span = high - low or (abs(high) * 0.1 or 1.0)
   lo, hi = low - 0.12 * span, high + 0.12 * span
-  plot = width - left - right
-  x = lambda value: left + (value - lo) / (hi - lo) * plot
-  height = top + row * len(chart.points) + 34
-  axis_y = top + row * len(chart.points) + 6
-  parts = [
-    f'<svg viewBox="0 0 {width} {height}" role="group" aria-labelledby="chart-{chart.number}-title">',
-    f'<line class="axis" x1="{left}" y1="{axis_y}" x2="{width - right}" y2="{axis_y}"/>',
-  ]
-  for value in sorted({low, high}):
-    tx = x(value)
-    parts.append(f'<line class="axis" x1="{tx:.1f}" y1="{axis_y}" x2="{tx:.1f}" y2="{axis_y + 5}"/>')
-    parts.append(f'<text class="tick" x="{tx:.1f}" y="{axis_y + 20}" text-anchor="middle">{_e(_number_text(value))}</text>')
-  for position, point in enumerate(chart.points):
-    cy = top + row * position + row / 2
+  x = lambda value: PLOT_LEFT + (value - lo) / (hi - lo) * (PLOT_WIDTH - PLOT_LEFT - PLOT_RIGHT)
+  middle = PLOT_ROW / 2
+  rows = []
+  for point in chart.points:
     cx = x(point.number)
     # The verified quotation that shows this value, not merely the first one.
     anchor = cites.value[_row_anchor(point.assessed)][point.assessed.value_quote][0]
     value_text = point.assessed.measurement.value_text
-    parts.append(f'<line class="guide" x1="{left}" y1="{cy:.1f}" x2="{width - right}" y2="{cy:.1f}"/>')
-    parts.append(f'<text x="8" y="{cy - 8:.1f}">{_e(point.source_id)} · {_e(_short(point.variant, 34))}</text>')
-    parts.append(f'<text class="tick" x="8" y="{cy + 8:.1f}">{_e(_short(point.definition, 40))}</text>')
-    parts.append(
-      f'<a href="#{anchor}"><title>{_e(point.source_id)} · {_e(point.variant)} · {_e(point.definition)}: {_e(value_with_unit(value_text, chart.unit))} — open the quotation</title>'
-      f'<circle class="dot" cx="{cx:.1f}" cy="{cy:.1f}" r="6"/>'
-      f'<text x="{cx + 10:.1f}" y="{cy + 4:.1f}">{_e(value_text)}</text></a>'
+    rows.append(
+      '<li class="plot-row"><div class="plot-label">'
+      f'<strong>{_e(point.source_id)} · {_e(point.variant)}</strong>'
+      f'<span class="plot-def">{_e(point.definition)}</span></div>'
+      f'<svg viewBox="0 0 {PLOT_WIDTH} {PLOT_ROW}" focusable="false">'
+      f'<line class="guide" x1="{PLOT_LEFT}" y1="{middle}" x2="{PLOT_WIDTH - PLOT_RIGHT}" y2="{middle}"/>'
+      f'<a href="#{anchor}"><title>{_e(point.source_id)} · {_e(point.variant)} · {_e(point.definition)}: '
+      f'{_e(value_with_unit(value_text, chart.unit))} — open the quotation</title>'
+      f'<circle class="dot" cx="{cx:.1f}" cy="{middle}" r="6"/>'
+      f'<text x="{cx + 10:.1f}" y="{middle + 4}">{_e(value_text)}</text></a></svg></li>'
     )
-  parts.append("</svg>")
-  return "".join(parts)
+  ticks = "".join(
+    f'<line class="axis" x1="{x(value):.1f}" y1="0" x2="{x(value):.1f}" y2="5"/>'
+    f'<text class="tick" x="{x(value):.1f}" y="19" text-anchor="middle">{_e(_number_text(value))}</text>'
+    for value in sorted({low, high})
+  )
+  axis = (
+    '<div class="plot-axis" aria-hidden="true"><span class="plot-spacer"></span>'
+    f'<svg viewBox="0 0 {PLOT_WIDTH} 24" focusable="false">'
+    f'<line class="axis" x1="{PLOT_LEFT}" y1="0" x2="{PLOT_WIDTH - PLOT_RIGHT}" y2="0"/>{ticks}</svg></div>'
+  )
+  return (
+    f'<div class="plot" role="group" aria-labelledby="chart-{chart.number}-title">'
+    f'<ol class="plot-rows">{"".join(rows)}</ol>{axis}</div>'
+  )
 
 
 def _chart(chart: Chart, cites: _MeasurementCitations) -> str:
@@ -421,7 +454,7 @@ def _chart(chart: Chart, cites: _MeasurementCitations) -> str:
     f"points; settings may still differ (see the Setting column). {differ}Results with different "
     "evaluation setups are descriptive and must not be ranked as a head-to-head comparison. This is "
     f"not a controlled experiment, and values are not ranked. {axis} Select a point to open its quotation.</span>"
-    f'</figcaption><div class="scroll">{_chart_svg(chart, cites)}</div></figure>'
+    f'</figcaption>{_plot(chart, cites)}</figure>'
   )
 
 
@@ -531,8 +564,80 @@ def _no_chart_guide(rows: list[Row]) -> str:
   )
 
 
-def _measurements_section(reports: list[SourceReport], citations: _Citations) -> str:
-  comparison = compare(reports)
+# The one dimension whose findings may accompany measurements without turning the
+# project back into a six-dimension comparison.
+MEASUREMENT_DIMENSION = "results"
+
+
+def _has_substance(report: SourceReport, dimension: str) -> bool:
+  """Whether a dimension holds anything real: a status, a note, a checked
+  absence or a contradiction."""
+  finding = report.findings.get(dimension)
+  return status_of(report, dimension) != "not_assessed" or (
+    finding is not None and bool(finding.note or finding.absences or finding.contradictions)
+  )
+
+
+def _is_measurement_focused(reports: list[SourceReport]) -> bool:
+  """Whether the sources record measurements and, at most, findings for the
+  results dimension: every other dimension has no status, note, absence or
+  contradiction. Then the six-dimension matrix would be five empty rows."""
+  if not any(report.measurements for report in reports):
+    return False
+  return not any(
+    _has_substance(report, dimension)
+    for report in reports for dimension, _label in DIMENSIONS if dimension != MEASUREMENT_DIMENSION
+  )
+
+
+def _measurement_overview(reports: list[SourceReport], comparison: Comparison) -> str:
+  """A short overview for sources that record measurements, and at most results findings."""
+  with_results = any(_has_substance(report, MEASUREMENT_DIMENSION) for report in reports)
+  results_label = dict(DIMENSIONS)[MEASUREMENT_DIMENSION]
+  rows = []
+  for report in reports:
+    mine = [row for row in comparison.rows if row.assessed.source_id == report.source_id]
+    plotted = sorted({row.chart for row in mine if row.chart is not None})
+    checks = report.quote_checks()
+    verified = sum(check.result == VERIFIED for check in checks)
+    charts = (
+      ", ".join(f'<a href="#chart-{number}">chart {number}</a>' for number in plotted)
+      if plotted else '<span class="muted">not plotted</span>'
+    )
+    css = "check-ok" if verified == len(checks) else "check-bad"
+    results = (
+      f"<td>{_status(status_of(report, MEASUREMENT_DIMENSION), f'#f-{MEASUREMENT_DIMENSION}-{report.source_id}')}"
+      f"{_flags(report, MEASUREMENT_DIMENSION)}</td>"
+      if with_results else ""
+    )
+    rows.append(
+      f'<tr><th scope="row"><a href="#src-{_e(report.source_id)}">{_source_name(report)}</a></th>'
+      f'<td><a href="#h-measures">{len(mine)}</a></td>'
+      f"{results}"
+      f'<td><span class="{css}">{verified} of {len(checks)} quotations verified</span></td>'
+      f"<td>{sum(row.chart is not None for row in mine)} of {len(mine)} · {charts}</td></tr>"
+    )
+  intro = (
+    f"These sources record measurements, and {_e(results_label)} is the only dimension with a finding. "
+    "The other five dimensions (task, data, validation, runtime, limitations) are Not assessed, "
+    "so the six-row matrix is not shown; "
+    if with_results else
+    "These sources record measurements only. Nothing is recorded in the six comparison "
+    "dimensions (task, data, validation, results, runtime, limitations), so that matrix is not shown; "
+  )
+  results_head = f'<th scope="col">{_e(results_label)}</th>' if with_results else ""
+  return (
+    '<section aria-labelledby="h-overview"><h2 id="h-overview">Overview</h2>'
+    f'<p class="muted">{intro}no finding has been marked or changed. See '
+    '<a href="#h-measures">Reported measurements</a> for every value, its evidence and its chart.</p>'
+    '<div class="scroll"><table class="overview"><thead><tr><th scope="col">Source</th>'
+    f'<th scope="col">Measurements</th>{results_head}<th scope="col">Evidence</th><th scope="col">Plotted</th></tr></thead>'
+    f'<tbody>{"".join(rows)}</tbody></table></div></section>'
+  )
+
+
+def _measurements_section(reports: list[SourceReport], citations: _Citations, comparison: Comparison | None = None) -> str:
+  comparison = comparison if comparison is not None else compare(reports)
   heading = '<section aria-labelledby="h-measures"><h2 id="h-measures">Reported measurements</h2>'
   if not comparison.rows:
     return heading + '<p class="muted">No structured measurements are recorded for these sources yet.</p></section>'
@@ -586,13 +691,14 @@ def _measurements_section(reports: list[SourceReport], citations: _Citations) ->
 def render_html(reports: list[SourceReport], *, research_question: str | None) -> str:
   """The complete page for the given checked reports, in their order."""
   citations = _Citations()
-  dimension_sections = []
+  sections = {}
   for dimension, label in DIMENSIONS:
     cards = "".join(_card(report, dimension, label, citations) for report in reports)
-    dimension_sections.append(
+    sections[dimension] = (
       f'<section id="d-{dimension}" aria-labelledby="h-{dimension}">'
       f'<h3 id="h-{dimension}">{_e(label)}</h3><div class="cards">{cards}</div></section>'
     )
+  dimension_sections = list(sections.values())
 
   head_cells = "".join(f'<th scope="col">{_source_name(report)}</th>' for report in reports)
   overview_rows = "".join(
@@ -605,7 +711,9 @@ def render_html(reports: list[SourceReport], *, research_question: str | None) -
     + "</tr>"
     for dimension, label in DIMENSIONS
   )
-  measurements = _measurements_section(reports, citations)
+  comparison = compare(reports)
+  measurement_only = _is_measurement_focused(reports)
+  measurements = _measurements_section(reports, citations, comparison)
 
   appendix = []
   for report in reports:
@@ -629,6 +737,30 @@ def render_html(reports: list[SourceReport], *, research_question: str | None) -
     if research_question else '<p class="muted">Research question: not set in desk.json.</p>'
   )
   legend = " ".join(_status(status) for status, _label in STATUSES)
+  matrix = (
+    '<section aria-labelledby="h-overview"><h2 id="h-overview">Overview</h2>'
+    f'<p class="muted">Status per dimension and source. Select a status to open the finding. {legend}</p>'
+    f'<div class="scroll"><table class="overview"><thead><tr><th scope="col">Dimension</th>{head_cells}</tr></thead>'
+    f"<tbody>{overview_rows}</tbody></table></div></section>"
+  )
+  findings_body = f'<h2 id="h-findings">Findings by dimension</h2>{"".join(dimension_sections)}'
+  overview = _measurement_overview(reports, comparison) if measurement_only else matrix
+  if not measurement_only:
+    findings = f'<section aria-labelledby="h-findings">{findings_body}</section>'
+  elif any(_has_substance(report, MEASUREMENT_DIMENSION) for report in reports):
+    # The results findings stay in view, because the overview links to them.
+    others = "".join(html for dimension, html in sections.items() if dimension != MEASUREMENT_DIMENSION)
+    findings = (
+      '<section aria-labelledby="h-findings"><h2 id="h-findings">Findings by dimension</h2>'
+      f"{sections[MEASUREMENT_DIMENSION]}"
+      "<details><summary>Other dimensions: nothing recorded (Not assessed)</summary>"
+      f"{others}</details></section>"
+    )
+  else:
+    findings = (
+      '<section aria-labelledby="h-findings"><details><summary>Findings by dimension: none recorded yet</summary>'
+      f"{findings_body}</details></section>"
+    )
   return (
     "<!doctype html>\n"
     '<html lang="en"><head><meta charset="utf-8">'
@@ -645,12 +777,8 @@ def render_html(reports: list[SourceReport], *, research_question: str | None) -
     "controlled experiment.</p>"
     f'<ul class="sources">{"".join(_source_summary(report) for report in reports)}</ul>'
     "</header>"
-    '<section aria-labelledby="h-overview"><h2 id="h-overview">Overview</h2>'
-    f'<p class="muted">Status per dimension and source. Select a status to open the finding. {legend}</p>'
-    f'<div class="scroll"><table class="overview"><thead><tr><th scope="col">Dimension</th>{head_cells}</tr></thead>'
-    f"<tbody>{overview_rows}</tbody></table></div></section>"
-    '<section aria-labelledby="h-findings"><h2 id="h-findings">Findings by dimension</h2>'
-    f'{"".join(dimension_sections)}</section>'
+    f"{overview}"
+    f"{findings}"
     f"{measurements}"
     '<section aria-labelledby="h-quotes"><h2 id="h-quotes">Quotations</h2>'
     '<p class="muted">Every quotation, with the position of its page in the PDF file and the result '

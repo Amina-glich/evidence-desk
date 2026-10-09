@@ -264,9 +264,10 @@ class MeasurementsViewTest(unittest.TestCase):
     self.assertIn("76.3% [S1 p.2, verified]", page.text_by_id["m-S1-1"])
     self.assertNotIn("76.3% %", html)
     self.assertIn("covers only the plotted range (74.9 to 76.3 %), not zero", html)
-    # On narrow screens the chart scrolls instead of shrinking its labels.
-    self.assertIn('<div class="scroll"><svg', html)
-    self.assertIn("min-width: 480px", html)
+    # On narrow screens the labels stack above their points instead of shrinking or scrolling.
+    self.assertEqual(html.count('class="plot-row"'), 2)
+    self.assertIn("@media (max-width: 560px)", html)
+    self.assertNotIn("min-width: 480px", html)
 
   def test_a_chart_point_links_to_the_quotation_that_shows_its_value(self):
     # The reviewed case: a context quotation listed first used to be the link target.
@@ -283,14 +284,14 @@ class MeasurementsViewTest(unittest.TestCase):
 
   def test_chart_points_stay_exposed_to_assistive_technology(self):
     html = self.plotted()
-    svg = re.search(r"<svg\b[^>]*>.*?</svg>", html, flags=re.DOTALL).group(0)
-    opening = re.match(r"<svg\b[^>]*>", svg).group(0)
+    plot = re.search(r'<div class="plot"[^>]*>', html).group(0)
     # role="img" would make the point links presentational for screen readers.
     self.assertNotIn('role="img"', html)
-    self.assertIn('role="group"', opening)
-    labelledby = re.search(r'aria-labelledby="([^"]+)"', opening).group(1)
+    self.assertIn('role="group"', plot)
+    labelledby = re.search(r'aria-labelledby="([^"]+)"', plot).group(1)
     self.assertIn(labelledby, Page(html).ids)
-    links = re.findall(r'<a href="#[^"]+">(.*?)</a>', svg, flags=re.DOTALL)
+    links = re.findall(r'<a href="#[^"]+">(.*?)</a>', html, flags=re.DOTALL)
+    links = [link for link in links if link.startswith("<title>")]
     self.assertEqual(len(links), 2)
     for link in links:
       self.assertRegex(link, r"^<title>S\d+ · [^<]+: [^<]+ — open the quotation</title>")
@@ -490,8 +491,8 @@ class VariantChartViewTest(unittest.TestCase):
     html, page = self.render(*self.two_variants())
     self.assertIn("chart-1", page.ids)
     self.assertIn("1 chart of 2 measurements.", html)
-    self.assertIn("S1 · Distillation recipe</text>", html)
-    self.assertIn("S2 · Training recipe A1</text>", html)
+    self.assertIn("<strong>S1 · Distillation recipe</strong>", html)
+    self.assertIn("<strong>S2 · Training recipe A1</strong>", html)
     self.assertIn("<title>S1 · Distillation recipe · Single-crop 224: 78.1% — open the quotation</title>", html)
     self.assertIn("Each point is labelled with its own model or training variant and metric definition", html)
     self.assertIn("Results with different evaluation setups are descriptive and must not be ranked as a head-to-head comparison", html)
@@ -503,8 +504,8 @@ class VariantChartViewTest(unittest.TestCase):
   def test_different_metric_definitions_are_shown_beside_their_points_and_flagged(self):
     html, page = self.render(*self.two_definitions())
     self.assertIn("chart-1", page.ids)
-    self.assertIn(">Single-crop 224</text>", html)
-    self.assertIn(">Ten-crop 224</text>", html)
+    self.assertIn('<span class="plot-def">Single-crop 224</span>', html)
+    self.assertIn('<span class="plot-def">Ten-crop 224</span>', html)
     self.assertIn("<title>S2 · Single model · Ten-crop 224: 74.9% — open the quotation</title>", html)
     self.assertIn("These points use different metric definitions, so they do not measure quite the same thing.", html)
     self.assertIn("must not be ranked as a head-to-head comparison", html)
@@ -541,3 +542,221 @@ class VariantChartViewTest(unittest.TestCase):
     html, _page = self.render(s1, s2)
     self.assertNotIn(hostile, html)
     self.assertIn("&lt;img", html)
+
+
+class ChartLabelTest(unittest.TestCase):
+  """Full evaluation-setup labels stay readable and tied to their own point."""
+
+  LONG_DEFINITION = (
+    "Ten-crop evaluation at 224 pixels after resizing the shorter side to 256 pixels, "
+    "averaging the softmax scores of the four corner crops, the centre crop and their mirrored copies"
+  )
+  LONG_VARIANT = "ResNet-50 trained with the A1 recipe: 600 epochs, binary cross-entropy, LAMB optimizer and heavy augmentation"
+
+  def html(self):
+    ten = {"label": self.LONG_DEFINITION, "as_written": "ten-crop 224 evaluation", "page": 1, "quote": TEN_CROP_QUOTE}
+    variant = {"label": self.LONG_VARIANT, "as_written": "single model"}
+    s1 = source("S1", PAPER_A, accuracy("76.3%", A_76, variant=variant))
+    s2 = source("S2", PAPER_B_TEN, accuracy("74.9%", B_74, metric_definition=ten))
+    return render_html([s1, s2], research_question=None)
+
+  def rows(self, html):
+    return re.findall(r'<li class="plot-row">.*?</li>', html, flags=re.DOTALL)
+
+  def test_complete_labels_are_shown_without_truncation(self):
+    html = self.html()
+    self.assertIn(f'<span class="plot-def">{self.LONG_DEFINITION}</span>', html)
+    self.assertIn(f"<strong>S1 · {self.LONG_VARIANT}</strong>", html)
+    plot = html[html.index('<div class="plot"'):html.index("</figure>")]
+    self.assertNotIn("…", plot)
+
+  def test_each_label_sits_in_the_same_row_as_its_own_point_and_citation(self):
+    html = self.html()
+    page = Page(html)
+    first, second = self.rows(html)
+    self.assertIn(self.LONG_VARIANT, first)
+    self.assertNotIn(self.LONG_DEFINITION, first)
+    self.assertIn(self.LONG_DEFINITION, second)
+    self.assertNotIn(self.LONG_VARIANT, second)
+    for row, value in ((first, "76.3%"), (second, "74.9%")):
+      target = re.search(r'<a href="#([^"]+)"><title>', row).group(1)
+      self.assertIn(value, row)
+      self.assertIn(value, page.text_by_id[target])
+      self.assertIn("verified", page.text_by_id[target])
+      # The full label is also the accessible name of the point.
+      self.assertIn(" — open the quotation</title>", row)
+
+  def test_the_labels_wrap_and_stack_on_a_narrow_screen(self):
+    html = self.html()
+    self.assertIn("overflow-wrap: anywhere", html)
+    self.assertRegex(html, r"@media \(max-width: 560px\) \{[^}]*\.plot-row[^}]*grid-template-columns: minmax\(0, 1fr\)")
+    self.assertNotIn("min-width: 480px", html)
+
+  def test_labels_are_escaped(self):
+    hostile = "<img src=x onerror=alert(1)>"
+    ten = {"label": hostile, "as_written": "ten-crop 224 evaluation", "page": 1, "quote": TEN_CROP_QUOTE}
+    s1 = source("S1", PAPER_A, accuracy("76.3%", A_76))
+    s2 = source("S2", PAPER_B_TEN, accuracy("74.9%", B_74, metric_definition=ten))
+    html = render_html([s1, s2], research_question=None)
+    self.assertNotIn(hostile, html)
+    self.assertIn("&lt;img", html)
+
+
+class OverviewTest(unittest.TestCase):
+
+  def measurement_only(self):
+    s1 = source("S1", PAPER_A, accuracy("76.3%", A_76))
+    s2 = source("S2", PAPER_B, accuracy("74.9%", B_74))
+    return render_html([s1, s2], research_question=None)
+
+  def overview_of(self, html):
+    return html[html.index('id="h-overview"'):html.index('id="h-findings"')]
+
+  def test_a_measurement_only_project_shows_a_short_measurement_overview(self):
+    html = self.measurement_only()
+    page = Page(html)
+    overview = self.overview_of(html)
+    self.assertIn("These sources record measurements only.", overview)
+    self.assertNotIn("Status per dimension and source", overview)
+    self.assertNotIn("Not assessed", overview)
+    self.assertIn('<a href="#chart-1">chart 1</a>', overview)
+    self.assertIn("quotations verified", overview)
+    self.assertEqual([target for target, _text in page.links if target not in set(page.ids)], [])
+
+  def test_the_six_dimension_findings_are_kept_but_collapsed_and_statuses_are_unchanged(self):
+    html = self.measurement_only()
+    self.assertIn("<details><summary>Findings by dimension: none recorded yet</summary>", html)
+    self.assertEqual(html.count("Not checked yet."), 12)
+    self.assertNotIn('class="status status-reported"', html)
+
+  def test_a_project_with_findings_keeps_the_full_six_dimension_overview(self):
+    html = render_html(two_sources(), research_question=None)
+    self.assertIn("Status per dimension and source", html)
+    self.assertNotIn("These sources record measurements only.", html)
+    self.assertNotIn("<details><summary>Findings by dimension", html)
+
+  def test_measurements_beside_findings_keep_the_full_overview(self):
+    first = source("S1", PAPER_A, accuracy("76.3%", A_76))
+    first.findings.update(two_sources()[0].findings)
+    html = render_html([first, source("S2", PAPER_B, accuracy("74.9%", B_74))], research_question=None)
+    self.assertIn("Status per dimension and source", html)
+
+  def test_a_note_on_an_unassessed_finding_keeps_the_full_overview(self):
+    s1 = source("S1", PAPER_A, accuracy("76.3%", A_76))
+    s1.findings.update(two_sources()[1].findings)
+    html = render_html([s1, source("S2", PAPER_B, accuracy("74.9%", B_74))], research_question=None)
+    self.assertIn("Status per dimension and source", html)
+    self.assertIn("Only the abstract was read.", html)
+
+  def test_no_measurements_and_no_findings_keep_the_matrix(self):
+    html = render_html([report_for({}), report_for({}, source_id="S2")], research_question=None)
+    self.assertIn("Status per dimension and source", html)
+
+  def test_the_overview_shows_the_note_text_never_a_bare_placeholder(self):
+    html = render_html(two_sources(), research_question=None)
+    overview = self.overview_of(html)
+    self.assertIn("Note: Single split only.", overview)
+    self.assertIn("Note: Only the abstract was read.", overview)
+    self.assertNotRegex(overview, r"(?:·|>)\s*note\s*(?:<|·)")
+    self.assertNotIn(">note<", overview)
+
+  def test_a_long_note_is_cut_on_a_word_boundary_and_stays_whole_in_its_finding(self):
+    note = ("This caveat explains in detail that the paper reports results on one split only " * 3).strip()
+    html = render_html([report_for({"data": {**REPORTED, "note": note}})], research_question=None)
+    self.assertRegex(self.overview_of(html), r"Note: This caveat[^<]*…")
+    self.assertNotIn(note, self.overview_of(html))
+    self.assertIn(note, html[html.index('id="h-findings"'):])
+
+
+class ShellOwnedChangesIndicatorTest(unittest.TestCase):
+  """The Changes +n/-n indicator belongs to the Möbius file list, not to this app."""
+
+  def test_neither_the_launcher_nor_the_view_renders_it(self):
+    from pathlib import Path
+    launcher = (Path(__file__).resolve().parent.parent / "index.jsx").read_text(encoding="utf-8")
+    html = render_html(two_sources(), research_question=None)
+    for text in (launcher, html):
+      self.assertNotRegex(text, r"Changes\s*[+−-]\s*\d")
+      self.assertNotIn("changed file", text)
+
+
+class ResNetShapeOverviewTest(unittest.TestCase):
+  """Measurements plus a Reported results finding, the other five dimensions Not assessed."""
+
+  RESULTS_NOTE = "Both numbers use the same ImageNet validation set but different training recipes."
+
+  def resnet_like(self, note=None, extra=None):
+    def build(source_id, pages, value_text, quote, number):
+      results = {
+        "status": "reported", "value": f"Top-1 accuracy is {number}.",
+        "evidence": [{"page": 2, "quote": quote}],
+      }
+      if note:
+        results["note"] = note
+      findings = {"results": results, **(extra or {})}
+      return report_for(findings, source_id=source_id, pages=pages, measurements=[accuracy(value_text, quote)])
+    s1 = build("S1", PAPER_A, "76.3%", A_76, "76.3%")
+    s2 = build("S2", PAPER_B, "74.9%", B_74, "74.9%")
+    return [s1, s2]
+
+  def overview_of(self, html):
+    return html[html.index('id="h-overview"'):html.index('id="h-findings"')]
+
+  def test_the_resnet_shape_gets_the_compact_overview_with_its_reported_results(self):
+    reports = self.resnet_like()
+    html = render_html(reports, research_question=None)
+    page = Page(html)
+    overview = self.overview_of(html)
+    self.assertIn("Metrics and reported results is the only dimension with a finding", overview)
+    self.assertNotIn("Status per dimension and source", overview)
+    self.assertNotIn("Research task or problem", overview)
+    self.assertEqual(overview.count('class="status status-reported"'), 2)
+    self.assertNotIn("status-not_assessed", overview)
+    self.assertIn('href="#f-results-S1"', overview)
+    self.assertIn('<a href="#chart-1">chart 1</a>', overview)
+    self.assertIn("chart-1", page.ids)
+    self.assertEqual([target for target, _text in page.links if target not in set(page.ids)], [])
+
+  def test_the_results_findings_stay_visible_and_the_other_five_are_collapsed_unchanged(self):
+    html = render_html(self.resnet_like(), research_question=None)
+    findings = html[html.index('id="h-findings"'):]
+    findings = findings[:findings.index('id="h-measures"')]
+    details = findings.index("<details>")
+    self.assertLess(findings.index('id="f-results-S1"'), details)
+    self.assertLess(findings.index('id="f-results-S2"'), details)
+    collapsed = findings[details:]
+    for dimension in ("task", "data", "validation", "runtime", "limitations"):
+      self.assertIn(f'id="f-{dimension}-S1"', collapsed)
+    self.assertEqual(collapsed.count("Not checked yet."), 10)
+    self.assertNotIn('class="status status-reported"', collapsed)
+    self.assertIn("Other dimensions: nothing recorded (Not assessed)", collapsed)
+
+  def test_a_real_note_on_the_results_finding_is_preserved(self):
+    html = render_html(self.resnet_like(note=self.RESULTS_NOTE), research_question=None)
+    self.assertIn(f"Note: {self.RESULTS_NOTE}", self.overview_of(html))
+    self.assertIn(self.RESULTS_NOTE, html[html.index('id="h-findings"'):])
+    self.assertNotRegex(self.overview_of(html), r"(?:·|>)\s*note\s*(?:<|·)")
+
+  def test_a_note_in_another_dimension_keeps_the_full_six_dimension_overview(self):
+    reports = self.resnet_like(extra={"task": {"status": "not_assessed", "note": "The abstract was read only."}})
+    html = render_html(reports, research_question=None)
+    self.assertIn("Status per dimension and source", html)
+    self.assertIn("Note: The abstract was read only.", self.overview_of(html))
+
+  def test_a_finding_in_another_dimension_keeps_the_full_overview(self):
+    reports = self.resnet_like(extra={"data": {**REPORTED, "value": "CIFAR-10."}})
+    html = render_html(reports, research_question=None)
+    self.assertIn("Status per dimension and source", html)
+    self.assertNotIn("is the only dimension with a finding", html)
+
+  def test_a_multi_dimension_comparison_keeps_the_full_overview_even_with_measurements(self):
+    first = self.resnet_like()[0]
+    first.findings.update(two_sources()[0].findings)
+    html = render_html([first, self.resnet_like()[1]], research_question=None)
+    self.assertIn("Status per dimension and source", html)
+    self.assertNotIn("<details><summary>Other dimensions", html)
+
+  def test_without_measurements_the_results_finding_alone_keeps_the_full_overview(self):
+    report = report_for({"results": {"status": "reported", "value": "x", "evidence": [{"page": 3, "quote": QUOTE_RESULT}]}})
+    html = render_html([report], research_question=None)
+    self.assertIn("Status per dimension and source", html)

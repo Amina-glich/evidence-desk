@@ -230,6 +230,17 @@ export default function App() {
     }
   }
 
+  // Möbius apps can list, create and open their projects, and open the Projects directory. They cannot
+  // delete a project, so deleting is left to Möbius itself, which asks for confirmation there.
+  async function browse() {
+    setActionError('')
+    try {
+      await runtime.browse()
+    } catch (cause) {
+      setActionError(cause?.message || 'Could not open the Projects directory.')
+    }
+  }
+
   if (!runtime) {
     return <main className="ed">
       <style>{CSS}</style>
@@ -296,6 +307,12 @@ export default function App() {
           </button>
         </li>)}
       </ul>}
+      <p className="ed-note">
+        To delete a comparison, open the Projects directory in Möbius and use the project's own menu there.
+        Apps cannot delete projects, so this page has no Delete button; Möbius asks you to confirm before
+        anything is removed.{' '}
+        <button type="button" className="ed-btn" onClick={browse}>Open Möbius Projects</button>
+      </p>
     </section>
 
     <details className="ed-files">

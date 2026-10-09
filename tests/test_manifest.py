@@ -409,3 +409,28 @@ class PlainSummaryGuidanceTest(unittest.TestCase):
     tool = next(tool for tool in load_manifest()["tools"] if tool["name"] == "export_comparison")
     self.assertIn("exports/comparison-by-dimension.csv", tool["description"])
     self.assertIn("comparison-by-dimension.csv", (REPO_ROOT / "evidence-desk.md").read_text(encoding="utf-8"))
+
+
+class LauncherDeleteTest(unittest.TestCase):
+  """Möbius gives apps no way to delete a project, so the launcher must not pretend to."""
+
+  def setUp(self):
+    self.source = (REPO_ROOT / "index.jsx").read_text(encoding="utf-8")
+
+  def test_the_launcher_calls_only_the_documented_project_actions(self):
+    import re
+    calls = set(re.findall(r"runtime\.(\w+)\(", self.source))
+    self.assertEqual(calls, {"list", "templates", "create", "open", "browse"})
+
+  def test_there_is_no_delete_control_or_undocumented_request(self):
+    lowered = self.source.lower()
+    for forbidden in ("delete(", "remove(", "fetch(", "xmlhttprequest", "postmessage", "/api/", "localstorage", "sqlite"):
+      self.assertNotIn(forbidden, lowered)
+    self.assertNotRegex(self.source, r">\s*Delete")
+
+  def test_the_page_explains_where_to_delete_and_opens_the_projects_directory(self):
+    flat = " ".join(self.source.split())
+    self.assertIn("Apps cannot delete projects, so this page has no Delete button", flat)
+    self.assertIn("Möbius asks you to confirm before anything is removed", flat)
+    self.assertIn("await runtime.browse()", self.source)
+    self.assertIn("Open Möbius Projects", self.source)

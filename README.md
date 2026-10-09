@@ -4,25 +4,30 @@ A Möbius Project app for comparing AI/ML research papers with source-grounded
 evidence: every extracted value points to a source, page and exact quote, and
 missing information is labelled “Not reported” instead of guessed.
 
-**Status: the hosted app is 0.6.7; version 0.6.8 in this repository is not installed yet.** The app has a manifest, a launcher, a Project template
+**Status: the hosted Möbius app is 0.6.8 (installation confirmed in the Möbius chat); 0.6.9 in this repository is local, uncommitted and not installed.** The app has a manifest, a launcher, a Project template
 with agent guidance, a service with seven agent tools — `project_status`,
 `add_source` (register an uploaded PDF and extract its page text with
 pypdf), `check_evidence` (deterministic quotation checking),
 `export_comparison` (comparison CSV and view), and arXiv discovery:
 `search_literature`, `lookup_reference` and `save_reference` — and a
 citation-linked **Evidence comparison** Creation. Version 0.4.1 was tested
-end to end in a hosted Möbius instance. The owner reports 0.6.7 installed
-there: it reads a source's title from its stored first-page text (skipping a
-recognized publisher permission, licence or copyright notice, and keeping the
-PDF file name as the fallback) and lets different model or training variants
-share a chart as labelled points. The code in this repository is `0.6.8` in
-`mobius.json`: results whose metric
-definitions or model variants differ can share a descriptive chart, each point
+end to end in a hosted Möbius instance. The owner confirmed in the Möbius chat
+that 0.6.8 is installed there. Recent versions: 0.6.6 reads a source's title
+from its stored first-page text, skipping a recognized publisher permission,
+licence or copyright notice (the PDF file name stays the fallback); 0.6.7 lets
+different model or training variants share a chart as labelled points; 0.6.8
+also lets different metric definitions share a descriptive chart, each point
 labelled with its own definition and variant, with a plain warning that results
 with different evaluation setups must not be ranked as a head-to-head
-comparison; task, dataset, split, metric and unit must still match exactly.
-Version 0.6.8 is not installed yet, so none of it has been exercised in the
-hosted instance. Features added after 0.4.1 were covered by the offline test suite; only what was exercised in
+comparison (task, dataset, split, metric and unit must still match exactly).
+Version 0.6.9 in this repository is a polish update, local, uncommitted and
+not installed, so none of it has been exercised in the hosted instance: chart labels are shown in full (wrapping, stacked above
+their point on narrow screens); a project that records measurements, with at most
+Metrics and reported results as a finding and the other five dimensions Not
+assessed, gets a short measurement overview instead of a mostly empty
+six-dimension matrix (any status, note, absence or contradiction elsewhere
+keeps the full matrix); the
+Overview shows the text of a note instead of the bare word "note". Features added after 0.4.1 were covered by the offline test suite; only what was exercised in
 the hosted instance counts as live-verified. Publisher-DOI lookup (Crossref) is
 not implemented yet.
 
@@ -90,7 +95,7 @@ the exported file.
 | Path | Role |
 |---|---|
 | `mobius.json` | App manifest: service, agent tool, skill, and the **Paper comparison** project template. |
-| `index.jsx` | Launcher: create, list and open this app's projects through `window.mobius.projects`; a short workflow guide with instructions for uploading PDFs to `inbox/` (no upload control: see below), a collapsed explanation of the project files; and three quick prompts (find papers, register PDFs and check evidence, export and review) whose text opens for editing, each with a Copy prompt button (`window.mobius.clipboard.writeText`, with a select-and-copy-manually fallback). It runs no tools and reads no project files. |
+| `index.jsx` | Launcher: create, list and open this app's projects through `window.mobius.projects` (and open the Möbius Projects directory with `browse()`; there is no Delete, which Möbius does not offer apps); a short workflow guide with instructions for uploading PDFs to `inbox/` (no upload control: see below), a collapsed explanation of the project files; and three quick prompts (find papers, register PDFs and check evidence, export and review) whose text opens for editing, each with a Copy prompt button (`window.mobius.clipboard.writeText`, with a select-and-copy-manually fallback). It runs no tools and reads no project files. |
 | `service.py` | Service entry the platform runs once per request (`json-v1`). Delegates to `desk.service`. |
 | `build.sh`, `build_view.py` | Project builder of the Evidence comparison Creation. Runs on the platform's Python (no pypdf), with the same file safety and scope rules as the export. |
 | `requirements.in`, `requirements.lock` | The service's Python dependency (pypdf), hash-pinned; Möbius builds the app's own environment from the lock (`"python": {"lock": ...}`). |
@@ -179,7 +184,16 @@ project can keep working as it is.
 
 The **Changes** indicator with its line counts in the file pane belongs to
 Möbius (its project file list), not to Evidence Desk, and the app cannot hide
-it.
+it. Evidence Desk neither renders nor can change it.
+
+**Deleting a comparison.** Möbius gives apps only `list`, `templates`,
+`create`, `open` and `browse` for projects (`window.mobius.projects`; read
+from `../mobius/frontend/src/lib/appProjectControl.js` and
+`runtime/projects.js`); there is no supported way for an app to delete a
+project. The launcher therefore has no Delete button and uses no workaround
+(no file paths, database or undocumented endpoints). It explains that a
+project is deleted from the Projects directory in Möbius, which has its own
+confirmation, and offers an **Open Möbius Projects** button (`browse()`).
 
 ## Verifying Project binding in Möbius
 
