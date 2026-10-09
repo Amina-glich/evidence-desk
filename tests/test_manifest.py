@@ -426,11 +426,32 @@ class LauncherDeleteTest(unittest.TestCase):
     lowered = self.source.lower()
     for forbidden in ("delete(", "remove(", "fetch(", "xmlhttprequest", "postmessage", "/api/", "localstorage", "sqlite"):
       self.assertNotIn(forbidden, lowered)
-    self.assertNotRegex(self.source, r">\s*Delete")
+    self.assertNotRegex(self.source, r">\s*Delete")
 
   def test_the_page_explains_where_to_delete_and_opens_the_projects_directory(self):
     flat = " ".join(self.source.split())
-    self.assertIn("Apps cannot delete projects, so this page has no Delete button", flat)
-    self.assertIn("Möbius asks you to confirm before anything is removed", flat)
+    self.assertIn("Projects are deleted from Möbius Projects, where Möbius asks you to confirm before anything is removed", flat)
     self.assertIn("await runtime.browse()", self.source)
     self.assertIn("Open Möbius Projects", self.source)
+
+  def test_the_guidance_is_a_separate_quiet_section_below_the_comparisons_card(self):
+    source = self.source
+    panel_end = source.index("</section>", source.index('className="ed-panel"'))
+    manage = source.index('className="ed-manage"')
+    self.assertGreater(manage, panel_end, "the guidance must not sit inside the comparisons card")
+    self.assertNotIn("Open Möbius Projects", source[:panel_end])
+    section = source[manage:source.index("</section>", manage)]
+    self.assertIn('aria-labelledby="manage-title"', source[manage - 60:manage + 80])
+    self.assertIn("<h2 id=\"manage-title\">Manage projects</h2>", section)
+    self.assertIn("onClick={browse}", section)
+    self.assertNotRegex(section, r"onClick=\{\s*(delete|remove)")
+
+  def test_the_section_is_spaced_themed_and_stacks_on_narrow_screens(self):
+    css = self.source[self.source.index("const CSS = `"):self.source.index("`", self.source.index("const CSS = `") + 14)]
+    rule = next(line for line in css.splitlines() if line.startswith(".ed-manage {"))
+    for part in ("margin-top: 28px", "border-top: 1px solid var(--border)", "flex-wrap: wrap", "justify-content: space-between"):
+      self.assertIn(part, rule)
+    quiet = [line for line in css.splitlines() if line.startswith((".ed-manage h2", ".ed-manage p"))]
+    self.assertTrue(quiet and all("var(--muted)" in line for line in quiet))
+    self.assertNotRegex(" ".join(line for line in css.splitlines() if "ed-manage" in line), r"#[0-9a-fA-F]{3,8}\b|rgb\(")
+    self.assertRegex(css, r"@media \(max-width: 480px\)[^\n]*\.ed-manage \.ed-btn \{ flex: 1 1 100%; \}")

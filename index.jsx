@@ -63,6 +63,10 @@ const CSS = `
 .ed-note { margin-top: 12px; padding-left: 10px; border-left: 2px solid var(--border); font-size: 13px; color: var(--muted); }
 .ed-panel { margin-top: 20px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); overflow: hidden; }
 .ed-panel-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; padding: 14px 16px 0; }
+.ed-manage { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 16px; margin-top: 28px; padding-top: 14px; border-top: 1px solid var(--border); }
+.ed-manage-text { flex: 1 1 260px; min-width: 0; }
+.ed-manage h2 { font-size: 13px; color: var(--muted); }
+.ed-manage p { margin-top: 2px; font-size: 13px; color: var(--muted); }
 .ed-form { display: flex; flex-wrap: wrap; gap: 8px; padding: 12px 16px 14px; }
 .ed-input { flex: 1 1 200px; min-height: 44px; padding: 0 12px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg); color: inherit; font: inherit; }
 .ed-btn { min-height: 44px; padding: 0 14px; border-radius: 8px; border: 1px solid var(--border); background: transparent; color: var(--text); font: inherit; white-space: nowrap; cursor: pointer; }
@@ -97,7 +101,7 @@ const CSS = `
 .ed-msg { margin-top: 6px; font-size: 13px; color: var(--muted); }
 .ed-msg--manual { color: var(--text); }
 @media (max-width: 560px) { .ed-steps { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
-@media (max-width: 480px) { .ed-form .ed-btn { flex: 1 1 100%; } .ed-prompt-top .ed-btn { flex: 1 1 100%; } }
+@media (max-width: 480px) { .ed-form .ed-btn { flex: 1 1 100%; } .ed-prompt-top .ed-btn { flex: 1 1 100%; } .ed-manage .ed-btn { flex: 1 1 100%; } }
 @media (max-width: 380px) { .ed-steps { grid-template-columns: 1fr; } }
 `
 
@@ -307,12 +311,16 @@ export default function App() {
           </button>
         </li>)}
       </ul>}
-      <p className="ed-note">
-        To delete a comparison, open the Projects directory in Möbius and use the project's own menu there.
-        Apps cannot delete projects, so this page has no Delete button; Möbius asks you to confirm before
-        anything is removed.{' '}
-        <button type="button" className="ed-btn" onClick={browse}>Open Möbius Projects</button>
-      </p>
+    </section>
+
+    <section className="ed-manage" aria-labelledby="manage-title">
+      <div className="ed-manage-text">
+        <h2 id="manage-title">Manage projects</h2>
+        <p>
+          Projects are deleted from Möbius Projects, where Möbius asks you to confirm before anything is removed.
+        </p>
+      </div>
+      <button type="button" className="ed-btn" onClick={browse}>Open Möbius Projects</button>
     </section>
 
     <details className="ed-files">
