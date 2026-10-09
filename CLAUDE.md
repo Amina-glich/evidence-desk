@@ -25,8 +25,8 @@ Möbius Project app for the Möbius Hackathon 2026 Private Pro Desk challenge. R
 
 The app is fully implemented: manifest, launcher, Paper comparison template and agent guidance, service entrypoint, project binding and status, PDF registration, evidence checking, CSV and citation-linked HTML comparison, structured measurement comparison, arXiv discovery and a project reference library.
 
-- Hosted Möbius instance: `0.6.5` is installed (app id 10; commit `0cff0e4`, per the owner's report of a live 0.6.5 test). That test recognized S2's title but still showed S1's PDF file name (a publisher permission notice precedes the title). Behaviour there beyond that report is not verified from this repository.
-- Local code (`mobius.json`): `0.6.6`, preparation for the next update. It is not committed, pushed or installed; nothing of 0.6.6 has been exercised in the hosted instance.
+- Hosted Möbius instance: `0.6.6` is installed (app id 10; commit `6218257`, per the owner). Behaviour there beyond that report is not verified from this repository; whether the live 0.6.6 export shows S1's title has not been confirmed here.
+- Local code (`mobius.json`): `0.6.7`, preparation for the next update. It is not committed, pushed or installed; nothing of 0.6.7 has been exercised in the hosted instance.
 - Known and unresolved: the comparison preview sometimes works only after switching to another file and back. Evidence Desk writes its exports atomically and no defect was found in its code; the suspected cause is Möbius's own file preview (polling refresh, and it places its own tags before the page's doctype). Not reproduced and not fixed.
 - The organizer confirmed that a Möbius MCP connector is not required; the goal is a Claude for Science style Project app. Any note saying the app is at an initial implementation stage is outdated.
 - Do not add Crossref or other new external API calls until the owner asks for them. Do not download PDFs; owners upload papers to `inbox/`.
@@ -40,7 +40,8 @@ Version history (what changed, not the current state):
 - 0.6.3 adds upload and project-file guidance, the file explanation in the launcher and a purple accent for the quick prompts.
 - 0.6.4 added plain-English no-chart explanations in the measurements view, source titles (embedded metadata only when it appears on page 1, else the PDF file name), the compact `exports/comparison-by-dimension.csv` and concise plain-English summary guidance. Live, titles still showed file names: 0.6.4 had no way to read a title when the PDF metadata had none.
 - 0.6.5 reads the title from the stored page-1 text (`first_page_title` in `desk/evidence.py`) when no embedded title verifies, so existing registered sources get a title without re-registration; the file name stays the fallback. Conservative on purpose: a title is returned only when a clear boundary (author, affiliation, abstract or blank line) follows it.
-- 0.6.6 (local, unreleased) skips a recognized publisher permission, licence or copyright notice (it starts with a known phrase and must end at a sentence-ending line within 8 lines, else it is not treated as a notice) before reading the title. Copyright notices are matched as notices too (a wrapped copyright notice is skipped whole; a one-line one without a full stop is skipped as a header). `StoredS1LayoutTest` uses the real notice sentence and title reported from S1's stored page 1; the exact stored line breaks were not seen, so several wraps are tested. S1 is not confirmed fixed until a live 0.6.6 export shows its title. Reproduced first: the notice lines were taken as the title block and the real title then exceeded the 3-line limit, so `first_page_title` returned nothing and the file name showed.
+- 0.6.6 skips a recognized publisher permission, licence or copyright notice (it starts with a known phrase and must end at a sentence-ending line within 8 lines, else it is not treated as a notice) before reading the title. Copyright notices are matched as notices too (a wrapped copyright notice is skipped whole; a one-line one without a full stop is skipped as a header). `StoredS1LayoutTest` uses the real notice sentence and title reported from S1's stored page 1; the exact stored line breaks were not seen, so several wraps are tested. Reproduced first: the notice lines were taken as the title block and the real title then exceeded the 3-line limit, so `first_page_title` returned nothing and the file name showed.
+- 0.6.7 (local, unreleased) lets different model or training variants share a chart as separately labelled points (see the measurement rules below); results from different papers and training setups are described as descriptive, not a controlled head-to-head ranking.
 
 ## Development rules
 
@@ -48,10 +49,10 @@ Measurements (`desk/measurements.py`, pure; user-facing description in README):
 
 - Optional top-level `measurements` in `evidence/S<n>.json` (schema stays 1). Each has `value_text` as written, `unit`, `metric_kind`, value quotations and required `fields`: task, dataset, split, metric, metric_definition, variant (plus hardware for speed and training cost). Each field is `label` + `as_written` (+ optional own quote) or `{"unknown": reason}`.
 - Never infer, borrow or normalise a field to make values match. `unknown` blocks plotting. Labels group only when identical after case/space normalisation: under-group, never over-group.
-- Evidence checks V1-V6 and plot rules P1-P6 live in code; do not loosen them. V3 checks hardware whenever supplied; V4 checks that percent signs agree between unit and quotation.
+- Evidence checks V1-V6 and plot rules P1-P6 live in code; do not loosen them. Deliberate exception (0.6.7): the model or training `variant` no longer has to match for a plot. It must still be stated and quote-backed (unknown blocks), and each variant is a separate labelled point; task, dataset, split, metric, metric definition, unit and (speed, cost) hardware must still match exactly, and an unknown crop or other metric definition still blocks. V3 checks hardware whenever supplied; V4 checks that percent signs agree between unit and quotation.
 - P5: conflicts are found among all of a source's measurements regardless of their other problems, with unknown labels as wildcards; conflicting values are never plotted. P6: a value overlapping a recorded contradiction side (same page and text) or sharing its number, in the same source and dimension, is never plotted; an unverifiable contradiction excludes the whole dimension.
 - The view lists every measurement ("Plotted in chart N" or the reason) and links each value and field to its verified quotation. Plots never rank values and values from different papers are never presented as directly comparable. The CSV does not change.
-- Regression: the Transformer vs ConvS2S audit (same WMT14 benchmarks, different variant, unknown BLEU definition, different hardware) must stay at 0 charts.
+- Regression: the Transformer vs ConvS2S audit (same WMT14 benchmarks, different variant, unknown BLEU definition, different hardware) must stay at 0 charts: it is still blocked by the unknown definition and by different hardware, no longer by the variant.
 
 Exports and views:
 
@@ -101,11 +102,11 @@ docker run --rm -v "$PWD":/work:ro -w /work -e PYTHONDONTWRITEBYTECODE=1 \
 
 Expected skips, to report with their reason:
 
-- On Windows (and any non-Linux system) the file-safety, locking, status and service tests are skipped, because they need Linux `O_NOFOLLOW`, `dir_fd` and `flock` ("needs Linux O_NOFOLLOW, dir_fd and flock"). 75 skipped at 314 tests.
+- On Windows (and any non-Linux system) the file-safety, locking, status and service tests are skipped, because they need Linux `O_NOFOLLOW`, `dir_fd` and `flock` ("needs Linux O_NOFOLLOW, dir_fd and flock"). 75 skipped at 322 tests.
 - On Linux exactly 2 tests skip: the platform-refusal tests, which are "only meaningful where the APIs are missing".
 - Without `pypdf` several test modules fail to import. Do not report such a run as a passing suite.
 
-Last full runs with the locked dependencies (local 0.6.6, uncommitted, 2026-10-09): Windows, Python 3.13.6 in a throwaway venv, 314 tests OK with 75 skipped; Linux, `python:3.12-slim-trixie` (Python 3.12.15), 314 tests OK with 2 skipped. The earlier `--network none` run was not repeated.
+Last full runs with the locked dependencies (local 0.6.7, uncommitted, 2026-10-09): Windows, Python 3.13.6 in a throwaway venv, 322 tests OK with 75 skipped; Linux, `python:3.12-slim-trixie` (Python 3.12.15), 322 tests OK with 2 skipped. The earlier `--network none` run was not repeated.
 
 ## Validating the app with the Möbius compiler
 

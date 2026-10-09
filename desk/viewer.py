@@ -10,9 +10,10 @@ quotation and back.
 compatibility fields and status. Each value and each field links to the
 quotation that backs it. A dot plot appears only for values that
 ``measurements.compare`` allows to be plotted together (same task, dataset,
-split, metric, metric definition and model variant, and hardware for speed
-or cost, all quote-backed, from at least two sources, without conflicting
-values); every other value says why it was not compared. Plots show values
+split, metric and metric definition, and hardware for speed or cost, all
+quote-backed, from at least two sources, without conflicting values); model
+or training variants may differ and are separate labelled points. Every other
+value says why it was not compared. Plots show values
 as written, in source order, and never rank them. Status colors always come
 with text, and nothing is resolved: notes, checked absences and
 contradictions (with every side quoted and checked) are shown as recorded.
@@ -298,9 +299,10 @@ def _source_summary(report: SourceReport) -> str:
 DIMENSION_LABELS = dict(DIMENSIONS)
 PLOT_RULE = (
   "A value is plotted only when at least two sources report the same task, dataset, split, "
-  "metric, metric definition and model variant (and hardware for speed or training cost), "
-  "every one backed by a verified quotation, no source reports conflicting values "
-  "for that combination, and the value is not part of a contradiction recorded in the source."
+  "metric and metric definition (and hardware for speed or training cost), every one backed by "
+  "a verified quotation, no source reports conflicting values for that combination, and the "
+  "value is not part of a contradiction recorded in the source. Model or training variants "
+  "may differ: each is a separate, labelled point."
 )
 
 
@@ -360,7 +362,7 @@ def value_with_unit(value_text: str, unit: str) -> str:
 
 
 def _chart_svg(chart: Chart, cites: _MeasurementCitations) -> str:
-  width, left, right, row, top = 640, 70, 120, 34, 16
+  width, left, right, row, top = 700, 170, 110, 38, 16
   values = [point.number for point in chart.points]
   low, high = min(values), max(values)
   span = high - low or (abs(high) * 0.1 or 1.0)
@@ -384,9 +386,10 @@ def _chart_svg(chart: Chart, cites: _MeasurementCitations) -> str:
     anchor = cites.value[_row_anchor(point.assessed)][point.assessed.value_quote][0]
     value_text = point.assessed.measurement.value_text
     parts.append(f'<line class="guide" x1="{left}" y1="{cy:.1f}" x2="{width - right}" y2="{cy:.1f}"/>')
-    parts.append(f'<text x="8" y="{cy + 4:.1f}">{_e(point.source_id)}</text>')
+    parts.append(f'<text x="8" y="{cy - 2:.1f}">{_e(point.source_id)}</text>')
+    parts.append(f'<text class="tick" x="8" y="{cy + 12:.1f}">{_e(_short(point.variant, 26))}</text>')
     parts.append(
-      f'<a href="#{anchor}"><title>{_e(point.source_id)}: {_e(value_with_unit(value_text, chart.unit))} — open the quotation</title>'
+      f'<a href="#{anchor}"><title>{_e(point.source_id)} · {_e(point.variant)}: {_e(value_with_unit(value_text, chart.unit))} — open the quotation</title>'
       f'<circle class="dot" cx="{cx:.1f}" cy="{cy:.1f}" r="6"/>'
       f'<text x="{cx + 10:.1f}" y="{cy + 4:.1f}">{_e(value_text)}</text></a>'
     )
@@ -401,10 +404,7 @@ def _chart(chart: Chart, cites: _MeasurementCitations) -> str:
     f"The horizontal axis covers only the plotted range ({_number_text(min(values))} to "
     f"{_number_text(max(values))} {_e(chart.unit)}), not zero, so small differences can look large."
   )
-  shared = [
-    f"metric definition: {_e(labels['metric_definition'])}",
-    f"model variant: {_e(labels['variant'])}",
-  ]
+  shared = [f"metric definition: {_e(labels['metric_definition'])}"]
   if HARDWARE_FIELD in labels:
     shared.append(f"hardware: {_e(labels[HARDWARE_FIELD])}")
   return (
@@ -413,7 +413,9 @@ def _chart(chart: Chart, cites: _MeasurementCitations) -> str:
     f"{_e(labels['metric'])} ({_e(chart.unit)}) on {_e(labels['dataset'])}, {_e(labels['split'])} — "
     f"{_e(labels['task'])}</strong><br>"
     f'<span class="muted">Shared: {"; ".join(shared)}. Same recorded task, dataset, split, metric '
-    "definition and model variant; settings may still differ (see the Setting column). This is "
+    "and metric definition. Each point is labelled with its own model or training variant, which can "
+    "differ between points; settings may still differ (see the Setting column). Results from different "
+    "papers and training setups are descriptive, not a controlled head-to-head ranking. This is "
     f"not a controlled experiment, and values are not ranked. {axis} Select a point to open its quotation.</span>"
     f'</figcaption><div class="scroll">{_chart_svg(chart, cites)}</div></figure>'
   )

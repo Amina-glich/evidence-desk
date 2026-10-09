@@ -4,6 +4,8 @@ A measurement (``evidence.Measurement``) is a number as the source writes
 it, with its unit and compatibility fields: task, dataset, split, metric,
 metric definition and model variant, plus hardware for speed and training
 cost. Every field is backed by a verified quotation or explicitly unknown.
+The variant (model or training setup) labels a point; it does not have to
+match between points, but it must be stated and quote-backed.
 
 Checks on one measurement (problems in its evidence):
 
@@ -22,11 +24,14 @@ Rules for a plot (all must hold):
 
 - P1 at least two sources;
 - P2 every plotted value passes V1-V6;
-- P3 identical labels (case and spacing aside) for every compatibility field,
-  the unit and the metric kind; hardware too for speed and training cost;
-- P4 no compatibility field is unknown: a missing field is never inferred;
-- P5 a source that reports different values for one combination is never
-  plotted for it. Conflicts are found among all of a source's measurements,
+- P3 identical labels (case and spacing aside) for task, dataset, split,
+  metric, metric definition, the unit and the metric kind; hardware too for
+  speed and training cost. Model or training variants may differ: each
+  variant is its own labelled point, never merged or ranked;
+- P4 no compatibility field is unknown, the variant included: a missing field
+  is never inferred;
+- P5 a source that reports different values for one combination (variant
+  included) is never plotted for it. Conflicts are found among all of a source's measurements,
   whatever their other problems, and an unknown field counts as possibly the
   same combination;
 - P6 a value involved in a contradiction recorded in the same source and
@@ -54,7 +59,8 @@ FIELD_NAMES = {
   "metric_definition": "metric definition", "variant": "model variant",
   HARDWARE_FIELD: "hardware",
 }
-PROTOCOL_FIELDS = ("metric_definition", "variant", HARDWARE_FIELD)
+# Evaluation details that must match for values to share a plot; the variant does not.
+PROTOCOL_FIELDS = ("metric_definition", HARDWARE_FIELD)
 
 _NUMBER = re.compile(r"^(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?(?:[eE][+-]?\d+)?%?$")
 _NUMBER_IN_TEXT = re.compile(r"(?<![\d.,])(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?(?:[eE][+-]?\d+)?")
@@ -108,11 +114,16 @@ class Point:
   number: float
   assessed: Assessed
 
+  @property
+  def variant(self) -> str:
+    """The model or training variant as the source's recorded label."""
+    return self.assessed.measurement.fields["variant"].label
+
 
 @dataclass
 class Chart:
   number: int
-  # The shared labels, from the first plotted measurement.
+  # The shared labels (every compatibility field but the variant), from the first plotted measurement.
   labels: dict[str, str]
   unit: str
   metric_kind: str
@@ -266,8 +277,17 @@ def assess(report: SourceReport) -> list[Assessed]:
   return assessed
 
 
+VARIANT_POSITION = MEASUREMENT_FIELDS.index("variant")
+
+
 def _key(item: Assessed) -> tuple:
-  return (item.measurement.metric_kind, _label(item.measurement.unit), *item.parts)
+  """What values must share to be plotted together: everything but the variant."""
+  parts = item.parts[:VARIANT_POSITION] + item.parts[VARIANT_POSITION + 1:]
+  return (item.measurement.metric_kind, _label(item.measurement.unit), *parts)
+
+
+def _variant(item: Assessed) -> str | None:
+  return item.parts[VARIANT_POSITION]
 
 
 def _benchmark(item: Assessed) -> tuple:
@@ -430,15 +450,18 @@ def compare(reports: list[SourceReport]) -> Comparison:
       first = members[0]
       chart = Chart(
         number=len(charts) + 1,
-        labels={name: first.measurement.fields[name].label for name in first.fields_to_check()},
+        labels={name: first.measurement.fields[name].label for name in first.fields_to_check() if name != "variant"},
         unit=first.measurement.unit,
         metric_kind=first.measurement.metric_kind,
       )
       for source_id, items in by_source.items():
-        # Identical values only: P5 removed every source with differing ones.
-        chart.points.append(Point(source_id, items[0].number, items[0]))
+        # One point per source and variant. Identical values only within a
+        # variant: P5 removed every source with differing ones.
+        variants: dict[str | None, Assessed] = {}
         for item in items:
+          variants.setdefault(_variant(item), item)
           rows[(item.source_id, item.index)].chart = chart.number
+        chart.points.extend(Point(source_id, item.number, item) for item in variants.values())
       charts.append(chart)
       continue
     for item in members:

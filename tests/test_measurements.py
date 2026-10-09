@@ -111,7 +111,8 @@ class PlotRulesTest(unittest.TestCase):
     comparison = compare([source("S1", PAPER_A, accuracy("76.3%", A_76)), source("S2", PAPER_B, accuracy("74.9%", B_74))])
     (chart,) = comparison.charts
     self.assertEqual([(point.source_id, point.number) for point in chart.points], [("S1", 76.3), ("S2", 74.9)])
-    self.assertEqual(chart.labels["variant"], "Single model")
+    self.assertNotIn("variant", chart.labels)
+    self.assertEqual([point.variant for point in chart.points], ["Single model", "Single model"])
     self.assertEqual([(row.chart, row.reason) for row in comparison.rows], [(1, None), (1, None)])
 
   def test_labels_match_ignoring_case_and_spacing_but_nothing_else(self):
@@ -127,12 +128,72 @@ class PlotRulesTest(unittest.TestCase):
     self.assertEqual(comparison.charts, [])
     self.assertIn("no other source reports this exact combination", comparison.rows[0].reason)
 
-  def test_p3_a_different_variant_is_not_compared_and_says_why(self):
+  def test_p3_different_variants_are_plotted_as_separate_labelled_points(self):
     s1 = source("S1", PAPER_A, accuracy("78.1%", A_ENSEMBLE, variant={"label": "Ensemble of 10", "as_written": "ensemble of 10 models"}))
     comparison = compare([s1, source("S2", PAPER_B, accuracy("74.9%", B_74))])
+    (chart,) = comparison.charts
+    self.assertEqual([(point.source_id, point.variant, point.number) for point in chart.points], [
+      ("S1", "Ensemble of 10", 78.1), ("S2", "Single model", 74.9),
+    ])
+    self.assertEqual([(row.chart, row.reason) for row in comparison.rows], [(1, None), (1, None)])
+    # Shared labels never include the variant, which belongs to each point.
+    self.assertEqual(chart.labels["metric_definition"], "Single-crop 224")
+    self.assertNotIn("variant", chart.labels)
+
+  def test_p3_a_source_with_two_variants_gets_two_points_and_still_needs_a_second_source(self):
+    ensemble = accuracy("78.1%", A_ENSEMBLE, variant={"label": "Ensemble of 10", "as_written": "ensemble of 10 models"})
+    both = source("S1", PAPER_A, accuracy("76.3%", A_76), ensemble)
+    self.assertEqual(compare([both]).charts, [])
+    (chart,) = compare([both, source("S2", PAPER_B, accuracy("74.9%", B_74))]).charts
+    self.assertEqual([(point.source_id, point.variant) for point in chart.points], [
+      ("S1", "Single model"), ("S1", "Ensemble of 10"), ("S2", "Single model"),
+    ])
+
+  def test_p3_the_same_variant_label_is_one_point_per_source_even_with_other_spacing(self):
+    s1 = source("S1", PAPER_A, accuracy("76.3%", A_76), accuracy("76.3%", A_76, variant={"label": " single  MODEL ", "as_written": "single model"}))
+    (chart,) = compare([s1, source("S2", PAPER_B, accuracy("74.9%", B_74))]).charts
+    self.assertEqual([point.source_id for point in chart.points], ["S1", "S2"])
+
+  def test_p3_evaluation_details_still_have_to_match_exactly(self):
+    base = lambda **overrides: source("S2", PAPER_B, accuracy("74.9%", B_74, **overrides))
+    s1 = source("S1", PAPER_A, accuracy("76.3%", A_76))
+    mismatches = {
+      "task": {"task": {"label": "Object detection", "as_written": "image classification"}},
+      "dataset": {"dataset": {"label": "ImageNet-V2", "as_written": "ImageNet"}},
+      "split": {"split": {"label": "test", "as_written": "validation set"}},
+      "metric": {"metric": {"label": "Top-5 accuracy", "as_written": "top-1 accuracy"}},
+      "metric definition": {"metric_definition": {
+        "label": "Ten-crop 224", "as_written": "single-crop 224 evaluation", "page": 1, "quote": DEFINITION_QUOTE,
+      }},
+    }
+    for name, override in mismatches.items():
+      with self.subTest(field=name):
+        comparison = compare([s1, base(**override)])
+        self.assertEqual(comparison.charts, [])
+        self.assertIsNone(comparison.rows[0].chart)
+        self.assertIn(f"{name} differs" if name == "metric definition" else "no other source reports", comparison.rows[0].reason)
+    # A different unit is a different quantity.
+    points = {**accuracy("74.9", B_74), "unit": "points"}
+    self.assertEqual(compare([s1, source("S2", PAPER_B, points)]).charts, [])
+
+  def test_p3_a_missing_crop_method_blocks_the_chart_even_when_the_variants_differ(self):
+    # The reviewed case: one paper's crop method is not stated, the variants differ.
+    unknown = {"unknown": "The paper does not say how the image is cropped for this result."}
+    s1 = source("S1", PAPER_A, accuracy("78.1%", A_ENSEMBLE, variant={"label": "Distillation", "as_written": "ensemble of 10 models"}))
+    s2 = source("S2", PAPER_B, accuracy("74.9%", B_74, metric_definition=unknown, variant={"label": "Training recipe A1", "as_written": "single model"}))
+    comparison = compare([s1, s2])
     self.assertEqual(comparison.charts, [])
-    self.assertIn("S2 reports the same task, dataset, split and metric", comparison.rows[0].reason)
-    self.assertIn("model variant differs (“Ensemble of 10” vs “Single model”)", comparison.rows[0].reason)
+    self.assertIn("metric definition unknown (The paper does not say how the image is cropped for this result)", comparison.rows[1].reason)
+    self.assertIsNone(comparison.rows[1].chart)
+    # The other paper's value is not plotted against a value whose crop is unknown.
+    self.assertIsNone(comparison.rows[0].chart)
+    self.assertIn("no other source", comparison.rows[0].reason)
+
+  def test_p4_an_unknown_variant_blocks_the_chart(self):
+    s2 = source("S2", PAPER_B, accuracy("74.9%", B_74, variant={"unknown": "The paper does not name the training recipe."}))
+    comparison = compare([source("S1", PAPER_A, accuracy("76.3%", A_76)), s2])
+    self.assertEqual(comparison.charts, [])
+    self.assertIn("model variant unknown", comparison.rows[1].reason)
 
   def test_p3_speed_and_cost_need_the_same_hardware(self):
     v100 = {"label": "8x NVIDIA V100", "as_written": "8 NVIDIA V100 GPUs"}
@@ -339,11 +400,12 @@ class AuditRegressionTest(unittest.TestCase):
       self.assertIn("no other source reports this exact combination", self.reasons[("S2", value)])
     for key, other in ((("S1", "3.5"), "S2"), (("S2", "37"), "S1")):
       self.assertIn(f"{other} reports the same task, dataset, split and metric", self.reasons[key])
-      self.assertIn("model variant differs", self.reasons[key])
+      self.assertNotIn("model variant differs", self.reasons[key])
       self.assertIn("hardware differs", self.reasons[key])
 
-  def test_even_a_known_definition_would_not_make_the_variants_comparable(self):
-    # Hypothetically suppose S1 did state the same BLEU definition.
+  def test_with_a_known_definition_the_variants_would_be_separate_labelled_points(self):
+    # Hypothetically suppose S1 did state the same BLEU definition. The real audit
+    # still plots nothing: S1's definition is unknown and the hardware differs.
     known = {"label": "Case-sensitive tokenized BLEU", "as_written": "BLEU"}
     en_de_s1 = "On the WMT 2014 English-to-German translation task, the big transformer model establishes a new BLEU score of 28.4 on newstest2014."
     s1 = source("S1", S1_PAGES, bleu(
@@ -356,11 +418,10 @@ class AuditRegressionTest(unittest.TestCase):
       {"label": "ConvS2S, average of three runs", "as_written": "averaged over three runs"},
     ))
     comparison = compare([s1, s2])
-    self.assertEqual(comparison.charts, [])
-    self.assertIn(
-      "model variant differs (“Big Transformer, single model” vs “ConvS2S, average of three runs”)",
-      comparison.rows[0].reason,
-    )
+    (chart,) = comparison.charts
+    self.assertEqual([(point.source_id, point.variant) for point in chart.points], [
+      ("S1", "Big Transformer, single model"), ("S2", "ConvS2S, average of three runs"),
+    ])
 
 
 class ReviewRegressionTest(unittest.TestCase):
@@ -398,8 +459,11 @@ class ReviewRegressionTest(unittest.TestCase):
     ensemble = accuracy("78.1%", A_ENSEMBLE, variant={"label": "Ensemble of 10", "as_written": "ensemble of 10 models"})
     comparison = compare([source("S1", PAPER_A, accuracy("76.3%", A_76), ensemble), source("S2", PAPER_B, accuracy("74.9%", B_74))])
     (chart,) = comparison.charts
-    self.assertEqual([point.number for point in chart.points], [76.3, 74.9])
-    self.assertNotIn("conflicting", comparison.rows[1].reason)
+    # The ensemble is a separate labelled point, not a conflicting value of the single model.
+    self.assertEqual([(point.variant, point.number) for point in chart.points], [
+      ("Single model", 76.3), ("Ensemble of 10", 78.1), ("Single model", 74.9),
+    ])
+    self.assertNotIn("conflicting", " ".join(row.reason or "" for row in comparison.rows))
 
   # Supplied hardware is checked for every metric kind.
 

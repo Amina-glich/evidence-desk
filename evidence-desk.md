@@ -264,10 +264,17 @@ Add a top-level `measurements` list to `evidence/S<n>.json`:
 - Use the same `label` for the same thing across sources, and different
   labels whenever anything differs (`mAP` and `mAP@0.5` are different).
 - A plot appears only when at least two sources have identical labels for
-  every field, the unit and metric kind (and hardware for speed or cost),
-  every quotation verifies, nothing is unknown, no source reports two
-  different values for that combination, and the value is not part of a
-  contradiction recorded in the same source and dimension.
+  task, dataset, split, metric and metric definition, the unit and metric
+  kind (and hardware for speed or cost), every quotation verifies, nothing
+  is unknown (`variant` included, so record it or `unknown`), no source
+  reports two different values for that combination, and the value is not
+  part of a contradiction recorded in the same source and dimension.
+- `variant` labels may differ between plotted values: each variant is a
+  separate labelled point, never merged or ranked, and the chart says that
+  results from different papers and training setups are descriptive, not a
+  controlled head-to-head ranking. Record a crop or other evaluation detail
+  in `metric_definition` only when the paper states it; otherwise write
+  `unknown`, and the values stay unplotted.
 - Conflicts are checked across all of a source's measurements, including
   ones with other problems, and an `unknown` field counts as possibly the
   same combination: such values are listed, never plotted.

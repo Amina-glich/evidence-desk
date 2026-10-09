@@ -13,7 +13,7 @@ from html.parser import HTMLParser
 from desk.viewer import NAV_SCRIPT, render_html
 from desk.vocabulary import DIMENSIONS
 from tests.reports import QUOTE_DATA, QUOTE_RESULT, REPORTED, report_for
-from tests.test_measurements import A_76, B_74, PAPER_A, PAPER_B, accuracy, audit_reports, source
+from tests.test_measurements import A_76, A_ENSEMBLE, B_74, PAPER_A, PAPER_B, accuracy, audit_reports, source
 
 
 class Page(HTMLParser):
@@ -291,7 +291,7 @@ class MeasurementsViewTest(unittest.TestCase):
     links = re.findall(r'<a href="#[^"]+">(.*?)</a>', svg, flags=re.DOTALL)
     self.assertEqual(len(links), 2)
     for link in links:
-      self.assertRegex(link, r"^<title>S\d+: [^<]+ — open the quotation</title>")
+      self.assertRegex(link, r"^<title>S\d+ · [^<]+: [^<]+ — open the quotation</title>")
 
   def test_every_field_links_to_a_quotation_containing_its_words(self):
     page = Page(self.plotted())
@@ -415,9 +415,10 @@ class NoChartExplanationTest(unittest.TestCase):
   def test_different_setups_are_named_on_both_sides(self):
     _html, page = self.audit_page()
     text = page.text_by_id["m-S1-4"]
-    self.assertIn("model variant: this paper says “Big Transformer”", text)
-    self.assertIn("S2 says “ConvS2S”", text)
+    self.assertIn("hardware: this paper says “8x NVIDIA P100”", text)
+    self.assertIn("S2 says “8x NVIDIA M40”", text)
     self.assertIn("different experiments", text)
+    self.assertNotIn("model variant", text)
 
   def test_conflicting_values_in_one_paper_are_explained(self):
     s1 = source("S1", PAPER_A, accuracy("76.3%", A_76), accuracy("77.0%", "In the abstract we state 77.0% top-1 accuracy for image classification on the ImageNet validation set with a single model."))
@@ -462,3 +463,49 @@ class SourceNameTest(unittest.TestCase):
     report = report_for({}, title=None)
     report.file = None
     self.assertIn("S1 · Untitled source", render_html([report], research_question=None))
+
+
+class VariantChartViewTest(unittest.TestCase):
+  """Different model or training variants are separately labelled points, with a plain warning."""
+
+  def render(self, *reports):
+    html = render_html(list(reports), research_question=None)
+    return html, Page(html)
+
+  def two_variants(self):
+    s1 = source("S1", PAPER_A, accuracy("78.1%", A_ENSEMBLE, variant={"label": "Distillation recipe", "as_written": "ensemble of 10 models"}))
+    s2 = source("S2", PAPER_B, accuracy("74.9%", B_74, variant={"label": "Training recipe A1", "as_written": "single model"}))
+    return s1, s2
+
+  def test_each_variant_is_labelled_on_its_point_and_the_warning_is_shown(self):
+    html, page = self.render(*self.two_variants())
+    self.assertIn("chart-1", page.ids)
+    self.assertIn("1 chart of 2 measurements.", html)
+    for label in ("Distillation recipe", "Training recipe A1"):
+      self.assertIn(f">{label}</text>", html)
+    self.assertRegex(html, r"<title>S1 · Distillation recipe: 78.1% — open the quotation</title>")
+    self.assertRegex(html, r"<title>S2 · Training recipe A1: 74.9% — open the quotation</title>")
+    self.assertIn("Each point is labelled with its own model or training variant", html)
+    self.assertIn("descriptive, not a controlled head-to-head ranking", html)
+    self.assertIn("values are not ranked", html)
+    self.assertNotIn("Shared: metric definition: Single-crop 224; model variant", html)
+    for row in ("m-S1-1", "m-S2-1"):
+      self.assertIn("Plotted in chart 1", page.text_by_id[row])
+
+  def test_points_still_link_to_their_verified_quotations(self):
+    _html, page = self.render(*self.two_variants())
+    points = [target for target, text in page.links if "open the quotation" in text]
+    self.assertEqual(len(points), 2)
+    for target, value in zip(points, ("78.1%", "74.9%")):
+      self.assertIn(value, page.text_by_id[target])
+      self.assertIn("verified", page.text_by_id[target])
+
+  def test_an_unrecorded_crop_method_still_blocks_the_chart_and_says_so(self):
+    s1, s2 = self.two_variants()
+    unknown = {"unknown": "The paper does not say how the image is cropped for this result."}
+    s2 = source("S2", PAPER_B, accuracy("74.9%", B_74, metric_definition=unknown, variant={"label": "Training recipe A1", "as_written": "single model"}))
+    html, page = self.render(s1, s2)
+    self.assertFalse({"svg", "figure"} & page.tags)
+    self.assertIn("No values are plotted.", html)
+    self.assertIn("metric definition unknown (The paper does not say how the image is cropped for this result)", page.text_by_id["m-S2-1"])
+    self.assertIn("never fills it in", page.text_by_id["m-S2-1"])
