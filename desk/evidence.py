@@ -462,6 +462,40 @@ def check_quote(quote: Quote, pages: tuple[tuple[str, ...], ...], raw_pages: tup
   return QuoteCheck(quote.page, quote.quote, NOT_FOUND)
 
 
+# Source titles.
+
+TITLE_REGION_CHARS = 2000
+TITLE_MIN_LETTERS = 12
+TITLE_MIN_WORDS = 2
+_NOT_LETTERS = re.compile(r"[\W_]+")
+
+
+def _letters(text: str) -> str:
+  return _NOT_LETTERS.sub("", normalize_quote(text).casefold())
+
+
+def file_name(path: str | None) -> str | None:
+  """The last part of a project path (``inbox/paper.pdf`` -> ``paper.pdf``)."""
+  name = (path or "").replace("\\", "/").rsplit("/", 1)[-1].strip()
+  return name or None
+
+
+def display_title(metadata_title: str | None, first_page: str | None, path: str | None) -> str | None:
+  """The name to show for a source: the PDF's embedded title only when its
+  words appear at the top of page 1 (PDF metadata is often wrong: a template
+  name, another paper, a word-processor file name), else the PDF file name.
+  Neither is evidence about the paper; this is a label."""
+  title = " ".join(metadata_title.split()) if isinstance(metadata_title, str) else ""
+  if (
+    title
+    and len(title.split()) >= TITLE_MIN_WORDS
+    and len(_letters(title)) >= TITLE_MIN_LETTERS
+    and _letters(title) in _letters((first_page or "")[:TITLE_REGION_CHARS])
+  ):
+    return title
+  return file_name(path)
+
+
 # Whole-project check.
 
 @dataclass
@@ -553,8 +587,8 @@ def check_project(project: Project) -> list[SourceReport]:
     if report.registered:
       try:
         source = load_source(project, source_id)
-        report.title = source.title
         report.file = source.record.get("file")
+        report.title = display_title(source.title, source.pages[0] if source.pages else None, report.file)
       except DeskError as exc:
         report.source_text = exc.code
         report.problems.append(exc.message)

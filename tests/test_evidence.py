@@ -264,3 +264,37 @@ class MeasurementSchemaTest(unittest.TestCase):
 
 if __name__ == "__main__":
   unittest.main()
+
+
+class DisplayTitleTest(unittest.TestCase):
+  """The label shown for a source: a verified first-page title, else the file name."""
+
+  PAGE_ONE = "Fast Detectors for\nEdge Devices\nA. Author\nAbstract. We study detectors.\n"
+
+  def title(self, metadata, page=PAGE_ONE, path="inbox/fast-detectors.pdf"):
+    from desk.evidence import display_title
+    return display_title(metadata, page, path)
+
+  def test_a_metadata_title_found_on_the_first_page_is_used(self):
+    self.assertEqual(self.title("Fast Detectors for Edge Devices"), "Fast Detectors for Edge Devices")
+    self.assertEqual(self.title("  fast   detectors for edge devices "), "fast detectors for edge devices")
+
+  def test_a_title_the_first_page_does_not_show_is_not_trusted(self):
+    for wrong in ("Microsoft Word - draft_v7.docx", "Some Other Paper Entirely", "untitled"):
+      self.assertEqual(self.title(wrong), "fast-detectors.pdf", wrong)
+
+  def test_a_title_only_deep_in_the_page_is_not_trusted(self):
+    page = "Header text. " * 400 + "Fast Detectors for Edge Devices"
+    self.assertEqual(self.title("Fast Detectors for Edge Devices", page), "fast-detectors.pdf")
+
+  def test_short_or_generic_titles_are_not_trusted_even_if_present(self):
+    self.assertEqual(self.title("Abstract", "Abstract\nText"), "fast-detectors.pdf")
+
+  def test_without_metadata_or_page_text_the_file_name_is_used(self):
+    self.assertEqual(self.title(None), "fast-detectors.pdf")
+    self.assertEqual(self.title("Fast Detectors for Edge Devices", None), "fast-detectors.pdf")
+    self.assertEqual(self.title(None, None, "inbox/a/b.pdf"), "b.pdf")
+
+  def test_nothing_known_gives_no_title(self):
+    self.assertIsNone(self.title(None, None, None))
+    self.assertIsNone(self.title(None, None, ""))

@@ -132,3 +132,59 @@ class CellLimitTest(unittest.TestCase):
 
 if __name__ == "__main__":
   unittest.main()
+
+
+class NarrowCsvTest(unittest.TestCase):
+  """exports/comparison-by-dimension.csv: the same cells, one row per dimension."""
+
+  def narrow(self, *reports):
+    text = export.build_narrow_csv(list(reports)).decode("utf-8-sig")
+    return list(csv.reader(io.StringIO(text)))
+
+  def full_report(self):
+    return report_for({
+      "data": {**REPORTED, "note": "Only one split."},
+      "results": {
+        "status": "reported", "value": "91.2% top-1.", "evidence": [{"page": 3, "quote": QUOTE_RESULT}],
+        "absences": [{"item": "latency", "checked": "pages 1-4"}],
+      },
+      "runtime": {"status": "not_reported", "checked": "Read pages 1-4 for a latency table."},
+      "task": {
+        **REPORTED,
+        "contradictions": [{
+          "description": "Two accuracies",
+          "evidence": [{"page": 2, "quote": QUOTE_DATA}, {"page": 2, "quote": QUOTE_RESULT}],
+        }],
+      },
+    })
+
+  def test_it_has_eleven_columns_and_one_row_per_dimension(self):
+    table = self.narrow(self.full_report(), report_for({}, source_id="S2"))
+    self.assertEqual(table[0], export.NARROW_HEADER)
+    self.assertEqual(len(export.NARROW_HEADER), 11)
+    self.assertTrue(all(len(row) == 11 for row in table))
+    self.assertEqual(len(table) - 1, 2 * len(DIMENSIONS))
+    self.assertEqual([row[3] for row in table[1:len(DIMENSIONS) + 1]], [label for _id, label in DIMENSIONS])
+
+  def test_every_cell_of_the_full_csv_appears_unchanged(self):
+    report = self.full_report()
+    header, wide = rows(report)
+    cells = dict(zip(header, wide))
+    for row in self.narrow(report)[1:]:
+      label = row[3]
+      for column, part in zip(("Status", "Finding", "Evidence", "Check", "Note", "Checked absences", "Contradictions"), row[4:]):
+        wide_name = f"{label}: {column.lower()}"
+        self.assertEqual(part, cells[wide_name], wide_name)
+    flat = {cell for row in self.narrow(report)[1:] for cell in row}
+    for cell in wide:
+      self.assertTrue(cell == "" or cell in flat, cell)
+
+  def test_formulas_are_neutralized_and_the_cell_limit_applies(self):
+    report = report_for({"data": {**REPORTED, "note": "=HYPERLINK(\"http://x\")"}})
+    self.assertIn("'=HYPERLINK(\"http://x\")", {cell for row in self.narrow(report) for cell in row})
+    note = "n" * 100
+    with mock.patch.object(export, "MAX_CELL_CHARS", len(note)):
+      export.build_narrow_csv([report_for({"data": {**REPORTED, "note": note}})])
+      with self.assertRaises(DeskError) as raised:
+        export.build_narrow_csv([report_for({"data": {**REPORTED, "note": note + "n"}})])
+    self.assertEqual(raised.exception.code, "cell_too_large")

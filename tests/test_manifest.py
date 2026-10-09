@@ -382,3 +382,30 @@ class GuidanceTest(unittest.TestCase):
 
 if __name__ == "__main__":
   unittest.main()
+
+
+class PlainSummaryGuidanceTest(unittest.TestCase):
+  """The summary is asked to be short and plain, with citations and statuses kept."""
+
+  def test_skill_asks_for_a_brief_plain_english_summary_that_keeps_the_evidence_rules(self):
+    skill = " ".join((REPO_ROOT / "evidence-desk.md").read_text(encoding="utf-8").split())
+    self.assertIn("Start with a short answer", skill)
+    self.assertIn("Explain each technical term, abbreviation and metric in a few plain words the first time it appears", skill)
+    self.assertIn("Never add a finding in an explanation", skill)
+    self.assertIn("Brevity must not drop a qualification", skill)
+    self.assertIn("`[S1 p.5]` citation", skill)
+    self.assertIn("State Not reported and Not assessed explicitly", skill)
+
+  def test_project_guidance_and_starter_brief_say_the_same(self):
+    guidance = template(load_manifest())["guidance"]
+    self.assertIn("explain each technical term in a few words the first time you use it", guidance)
+    self.assertIn("keep every [S1 p.5] citation", guidance)
+    brief = (REPO_ROOT / "templates" / "synthesis.md").read_text(encoding="utf-8")
+    self.assertIn("plain-English", brief)
+    self.assertIn("first time it appears", brief)
+    self.assertNotRegex(brief, r"\b0\.\d+\.\d+\b")
+
+  def test_the_export_tool_describes_the_narrow_csv(self):
+    tool = next(tool for tool in load_manifest()["tools"] if tool["name"] == "export_comparison")
+    self.assertIn("exports/comparison-by-dimension.csv", tool["description"])
+    self.assertIn("comparison-by-dimension.csv", (REPO_ROOT / "evidence-desk.md").read_text(encoding="utf-8"))

@@ -48,9 +48,12 @@ yourself.
   every quotation against the registered page text, on the page it cites,
   including measurement values and fields; it also reports measurement
   problems (see Measurements).
-- `export_comparison`: writes `exports/comparison.csv` and the comparison
-  view `exports/comparison.html` for the sources in scope. It refuses while
-  an in-scope evidence file is invalid.
+- `export_comparison`: writes `exports/comparison.csv`, the narrow-screen
+  copy `exports/comparison-by-dimension.csv` (the same cells, one row per
+  source and dimension) and the comparison view `exports/comparison.html` for
+  the sources in scope. It refuses while an in-scope evidence file is invalid.
+  The view names each paper by the title printed on its first page, or by its
+  PDF file name; the PDF's embedded metadata title is never trusted on its own.
 
 - `search_literature` with `query`: read-only arXiv search; up to 10 results
   with id, title, authors, abstract, categories, dates and whether each is
@@ -281,3 +284,21 @@ claim cites its evidence as `[S1 p.5]`. State Not reported and Not assessed
 explicitly instead of omitting them, and do not draw conclusions the cited
 quotations do not support. Every note, checked absence and contradiction in
 the brief must also be in the evidence files, so it reaches the CSV export.
+
+Write the brief for a researcher who has not read the papers, briefly and in
+plain English:
+
+- Start with a short answer (two to four sentences) to the research question,
+  before the dimensions. Say what the papers agree on, where they differ and
+  what is missing. Do not compare values from different papers as if they
+  were measured the same way.
+- Use short sentences and everyday words. Say "tested on" instead of
+  "evaluated against", and name what a result means in a few words.
+- Explain each technical term, abbreviation and metric in a few plain words
+  the first time it appears (for example "BLEU, a score for machine
+  translation quality"), using only what the papers or common knowledge say.
+  Never add a finding in an explanation.
+- Keep each dimension to what the evidence supports: a few sentences or
+  bullets, each with its `[S1 p.5]` citation. Brevity must not drop a
+  qualification (a note, a checked absence or a contradiction), a status or a
+  citation.

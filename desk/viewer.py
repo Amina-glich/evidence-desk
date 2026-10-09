@@ -32,12 +32,13 @@ Output is deterministic.
 
 from __future__ import annotations
 
+import re
 from html import escape
 
 from desk.evidence import (
-  HARDWARE_FIELD, RESULT_LABELS, VERIFIED, Finding, Quote, QuoteCheck, SourceReport, status_of,
+  HARDWARE_FIELD, RESULT_LABELS, VERIFIED, Finding, Quote, QuoteCheck, SourceReport, file_name, status_of,
 )
-from desk.measurements import FIELD_NAMES, Assessed, Chart, Comparison, compare
+from desk.measurements import FIELD_NAMES, Assessed, Chart, Comparison, Row, compare
 from desk.vocabulary import DIMENSIONS, STATUSES
 
 
@@ -121,6 +122,9 @@ footer { margin-top: 40px; font-size: 0.85rem; color: var(--ed-muted); }
 table.measures { border-collapse: collapse; min-width: 100%; font-size: 0.88rem; }
 .measures th, .measures td { border: 1px solid var(--ed-border); padding: 6px 8px; text-align: left; vertical-align: top; }
 .measures thead th { background: var(--ed-surface); }
+.plain { margin: 4px 0 0; padding-left: 18px; color: var(--ed-muted); }
+.measures p.plain { padding-left: 0; }
+.notice.plain { margin: 12px 0; }
 .measures tr.is-target { outline: 2px solid var(--ed-accent); outline-offset: -2px; }
 .as-written { display: block; font-size: 0.8rem; color: var(--ed-muted); }
 .plotted { color: var(--ed-ok); font-weight: 600; }
@@ -206,7 +210,8 @@ def _status(status: str, href: str | None = None) -> str:
 
 
 def _source_name(report: SourceReport) -> str:
-  title = _short(report.title, TITLE_SHORT_CHARS) if report.title else "Untitled source"
+  name = report.title or file_name(report.file)
+  title = _short(name, TITLE_SHORT_CHARS) if name else "Untitled source"
   return f"{_e(report.source_id)} · {_e(title)}"
 
 
@@ -414,6 +419,112 @@ def _chart(chart: Chart, cites: _MeasurementCitations) -> str:
   )
 
 
+_DIFFERS = re.compile(r"(?:the |; the )(metric definition|model variant|hardware) differs \(“(.*?)” vs “(.*?)”\)")
+_PARTNER = re.compile(r"\b(S\d+) reports the same task")
+
+_PROBLEM_HELP = {
+  "quote_not_verified": (
+    "A quotation recorded for this value could not be found on the PDF page it cites, so the value is not trusted yet.",
+    "Ask the agent to re-run the evidence check and correct the page or the quotation.",
+  ),
+  "value_not_in_quote": (
+    "The number written in the table does not appear in its quotation.",
+    "Ask the agent to copy the number exactly as the paper prints it, with its quotation.",
+  ),
+  "value_unparsed": (
+    "The value is not a plain number, so it cannot be placed on a scale.",
+    "It stays listed here with its citation; compare it by reading the quotation.",
+  ),
+  "relative_value": (
+    "This is a difference or a ratio, not a value the paper measured itself.",
+    "Record the paper's own measured value instead, if it reports one.",
+  ),
+  "percent_mismatch": (
+    "The percent sign in the quotation and the unit recorded here disagree.",
+    "Ask the agent to fix the unit or the value so they agree with the quotation.",
+  ),
+  "unit_mismatch": (
+    "The unit recorded for this value does not match how the value is written.",
+    "Ask the agent to fix the unit so it agrees with the value.",
+  ),
+  "hardware_missing": (
+    "Speed and training cost depend on the hardware, and none is recorded.",
+    "Check the paper for the hardware; if it names it, ask the agent to record it with a quotation.",
+  ),
+  "field_not_evidenced": (
+    "A label recorded for this value (task, dataset, metric or similar) is not in the words of its quotation.",
+    "Ask the agent to quote the passage that states it, or to correct the label.",
+  ),
+}
+
+
+def _plain_help(row: Row) -> list[tuple[str, str]]:
+  """Plain-English (what happened, what to do next) pairs for a value that is not plotted."""
+  item, reason = row.assessed, row.reason or ""
+  found: list[tuple[str, str]] = []
+  for code, _text in item.problems:
+    found.append(_PROBLEM_HELP.get(code.split(":")[0], _PROBLEM_HELP["quote_not_verified"]))
+  for name in item.unknown:
+    field_name = FIELD_NAMES[name]
+    found.append((
+      f"The paper does not say what the {field_name} is, or it was not found, and Evidence Desk never fills it in. "
+      "Without it this value cannot be shown to measure the same thing as another paper's.",
+      f"Look in the paper. If it states the {field_name}, ask the agent to record it with a quotation; otherwise this value stays unplotted.",
+    ))
+  if "conflicting values" in reason:
+    found.append((
+      "This paper gives different numbers for what looks like the same measurement, so none of them can be picked for a chart.",
+      "Open the cited quotations and see how the paper explains them (for example different settings), then ask the agent to record the difference.",
+    ))
+  if "contradiction recorded" in reason or "contradiction in this dimension" in reason:
+    found.append((
+      "This paper contradicts itself about this value, as recorded in the findings.",
+      "Read both quotations of the contradiction and decide yourself which one applies; the chart is not drawn for either.",
+    ))
+  differences = _DIFFERS.findall(reason)
+  if differences:
+    partner = (_PARTNER.search(reason) or [None, "another paper"])[1]
+    parts = "; ".join(f"{kind}: this paper says “{mine}”, {partner} says “{theirs}”" for kind, mine, theirs in differences)
+    found.append((
+      f"{partner} reports the same task, dataset, split and metric, but under a different setup ({parts}). "
+      "These are different experiments, so putting them on one scale would mislead.",
+      "Compare them by reading the quotations. A chart appears only when two papers report the same setup.",
+    ))
+  if "is excluded because of conflicting or contradicted values" in reason:
+    found.append((
+      "The other paper's matching value is held back because that paper conflicts with itself.",
+      "Resolve that paper's conflicting values first.",
+    ))
+  if "no other source reports this exact combination" in reason:
+    found.append((
+      "No other registered paper reports this same measurement with verified evidence, so there is nothing to compare it with.",
+      "Upload another paper that reports it to inbox/ and register it, or search arXiv for one.",
+    ))
+  return list(dict.fromkeys(found))
+
+
+def _status_cell(row: Row) -> str:
+  help_items = _plain_help(row)
+  if not help_items:
+    return _e(row.reason)
+  plain = "".join(f'<li>{_e(what)} <em>What you can do:</em> {_e(todo)}</li>' for what, todo in help_items)
+  return f'{_e(row.reason)}<p class="plain"><strong>In plain English</strong></p><ul class="plain">{plain}</ul>'
+
+
+def _no_chart_guide(rows: list[Row]) -> str:
+  """A short, shared explanation of why nothing was plotted and the next steps."""
+  steps = list(dict.fromkeys(todo for row in rows for _what, todo in _plain_help(row)))
+  items = "".join(f"<li>{_e(step)}</li>" for step in steps)
+  return (
+    '<div class="notice plain" role="note"><p><strong>Why there is no chart.</strong> '
+    "A chart is drawn only when two papers report the same measurement under the same conditions. "
+    "Evidence Desk will not guess or adjust a value to make papers match, so every value is shown "
+    "below with its paper and PDF page, and each row says in plain English what is different or missing.</p>"
+    + (f"<p><strong>What you can do next</strong></p><ul>{items}</ul>" if items else "")
+    + "</div>"
+  )
+
+
 def _measurements_section(reports: list[SourceReport], citations: _Citations) -> str:
   comparison = compare(reports)
   heading = '<section aria-labelledby="h-measures"><h2 id="h-measures">Reported measurements</h2>'
@@ -431,7 +542,7 @@ def _measurements_section(reports: list[SourceReport], citations: _Citations) ->
       '<p class="notice" role="note"><strong>No values are plotted.</strong> '
       f"{PLOT_RULE} No recorded values meet all of these conditions; the Status column says why "
       "for each one.</p>"
-    )
+    ) + _no_chart_guide(comparison.rows)
   charts = "".join(_chart(chart, cites) for chart in comparison.charts)
   body = []
   for row in comparison.rows:
@@ -445,7 +556,7 @@ def _measurements_section(reports: list[SourceReport], citations: _Citations) ->
     if row.chart is not None:
       status = f'<a class="plotted" href="#chart-{row.chart}">Plotted in chart {row.chart}</a>'
     else:
-      status = _e(row.reason)
+      status = _status_cell(row)
     setting = _e(measurement.setting) if measurement.setting else '<span class="muted">—</span>'
     body.append(
       f'<tr id="{anchor}"><td>{_e(item.source_id)}</td><td>{value}</td>'

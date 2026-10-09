@@ -5,6 +5,10 @@ from findings whose quotations were checked against the papers.
 
 Research question: not set yet.
 
+<!-- Writing guide for the agent: begin with a two- to four-sentence plain-English
+answer, keep each section short, explain each technical term in a few words the
+first time it appears, and keep every [S1 p.5] citation. -->
+
 No sources have been compared yet, so every dimension below is Not assessed.
 
 ## Research task or problem

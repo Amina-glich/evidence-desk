@@ -4,17 +4,23 @@ A Möbius Project app for comparing AI/ML research papers with source-grounded
 evidence: every extracted value points to a source, page and exact quote, and
 missing information is labelled “Not reported” instead of guessed.
 
-**Status: 0.6.3.** The app has a manifest, a launcher, a Project template
+**Status: local code is preparation for 0.6.4; the hosted app is 0.6.3.** The app has a manifest, a launcher, a Project template
 with agent guidance, a service with seven agent tools — `project_status`,
 `add_source` (register an uploaded PDF and extract its page text with
 pypdf), `check_evidence` (deterministic quotation checking),
 `export_comparison` (comparison CSV and view), and arXiv discovery:
 `search_literature`, `lookup_reference` and `save_reference` — and a
 citation-linked **Evidence comparison** Creation. Version 0.4.1 was tested
-end to end in a hosted Möbius instance, and 0.6.2 is installed there. Version
-0.6.3, which adds upload and file guidance and a purple accent for the quick
-prompts, is not installed yet. Publisher-DOI lookup (Crossref) is not
-implemented yet.
+end to end in a hosted Möbius instance, and 0.6.3 (upload and file guidance,
+a purple accent for the quick prompts) is installed there. The code in this
+repository is `0.6.4` in `mobius.json`: it adds plain-English no-chart
+explanations, paper titles verified on the first page (else the PDF file
+name), a compact `exports/comparison-by-dimension.csv` and shorter plain-English
+summary guidance. Nothing of 0.6.4 is committed, pushed or installed yet, so
+none of it has been exercised in the hosted instance. Features added after
+0.4.1 were covered by the offline test suite; only what was exercised in the
+hosted instance counts as live-verified. Publisher-DOI lookup (Crossref) is
+not implemented yet.
 
 ## Literature discovery and the reference library
 
@@ -55,6 +61,9 @@ contradiction recorded in the same source and dimension
 percent signs that must agree between unit and quotation). Each plotted
 point links to the verified quotation that shows its value. Plots never
 rank values and say they are not controlled experiments.
+
+Each paper is named by the title printed at the top of its first PDF page (the PDF's embedded title is used only when it appears there), or by its PDF
+file name; embedded metadata is never trusted on its own.
 
 The page is self-contained (nothing remote) and every recorded text is
 HTML-escaped.
@@ -99,7 +108,7 @@ the exported file.
 | `desk/sources.py` | `add_source`: registers an `inbox/` PDF as `sources/S<n>/` (`source.json`, `pages.json`), deduplicated by SHA-256, published atomically under the project lock; `load_source` refuses page text whose digest changed. |
 | `desk/pdf_text.py` | Bounded pypdf extraction; refuses non-PDF, damaged, encrypted, oversized and text-less (scanned) files. |
 | `desk/evidence.py` | Strict validation of `evidence/S<n>.json` (findings plus optional notes, checked absences and quote-backed contradictions); `check_evidence` matches each quotation, including both sides of every contradiction, on its cited page after a fixed normalization of PDF artefacts. No fuzzy matching. |
-| `desk/export.py` | `export_comparison`: `exports/comparison.html` (see `desk/viewer.py`) and a deterministic, formula-safe `exports/comparison.csv` with the service's own check per finding; the original 27 columns keep their positions and each finding's note, checked absences and contradictions follow in appended columns. Refuses a cell over 32,000 characters instead of letting spreadsheet software cut it. |
+| `desk/export.py` | `export_comparison`: `exports/comparison.html` (see `desk/viewer.py`) and a deterministic, formula-safe `exports/comparison.csv` with the service's own check per finding; the original 27 columns keep their positions and each finding's note, checked absences and contradictions follow in appended columns. `exports/comparison-by-dimension.csv` holds the same cells in 11 columns (one row per source and dimension) for narrow screens. Refuses a cell over 32,000 characters instead of letting spreadsheet software cut it. |
 | `desk/arxiv.py` | Read-only arXiv client: identifier and query validation, fixed-host HTTPS transport without redirects or proxies, cross-process pacing, safe error mapping, and a strict Atom parser. |
 | `desk/library.py` | The reference library and the `search_literature`, `lookup_reference` and `save_reference` tools. |
 | `desk/measurements.py` | Pure comparability rules: evidence checks for measurements (number in its quotation, field words in theirs, unit, no differences or ratios, hardware for speed and cost), the compatibility key, and which values may share a plot. |

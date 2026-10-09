@@ -378,3 +378,87 @@ class SafetyTest(unittest.TestCase):
 
 if __name__ == "__main__":
   unittest.main()
+
+
+class NoChartExplanationTest(unittest.TestCase):
+  """Plain-English guidance for values that are not plotted. The rules that
+  refuse a chart are unchanged: this only explains the refusal."""
+
+  def audit_page(self):
+    html = render_html(audit_reports(), research_question=None)
+    return html, Page(html)
+
+  def test_a_guide_explains_why_there_is_no_chart_and_what_to_do_next(self):
+    html, page = self.audit_page()
+    self.assertFalse({"svg", "figure"} & page.tags)
+    self.assertIn("Why there is no chart.", html)
+    self.assertIn("will not guess or adjust a value to make papers match", html)
+    self.assertIn("What you can do next", html)
+    self.assertIn("Upload another paper that reports it to inbox/", html)
+
+  def test_every_value_keeps_its_citation_and_gets_a_plain_explanation(self):
+    _html, page = self.audit_page()
+    rows = [element for element in page.ids if element.startswith("m-")]
+    self.assertEqual(len(rows), 9)
+    for row in rows:
+      text = page.text_by_id[row]
+      self.assertIn("In plain English", text)
+      self.assertIn("What you can do:", text)
+      self.assertRegex(text, r"\[S\d p\.\d, verified\]")
+
+  def test_an_unknown_field_is_explained_without_being_filled_in(self):
+    _html, page = self.audit_page()
+    text = page.text_by_id["m-S1-1"]
+    self.assertIn("does not say what the metric definition is", text)
+    self.assertIn("never fills it in", text)
+
+  def test_different_setups_are_named_on_both_sides(self):
+    _html, page = self.audit_page()
+    text = page.text_by_id["m-S1-4"]
+    self.assertIn("model variant: this paper says “Big Transformer”", text)
+    self.assertIn("S2 says “ConvS2S”", text)
+    self.assertIn("different experiments", text)
+
+  def test_conflicting_values_in_one_paper_are_explained(self):
+    s1 = source("S1", PAPER_A, accuracy("76.3%", A_76), accuracy("77.0%", "In the abstract we state 77.0% top-1 accuracy for image classification on the ImageNet validation set with a single model."))
+    html = render_html([s1, source("S2", PAPER_B, accuracy("74.9%", B_74))], research_question=None)
+    self.assertIn("gives different numbers for what looks like the same measurement", html)
+    self.assertFalse({"svg", "figure"} & Page(html).tags)
+
+  def test_a_plotted_chart_adds_no_guide_and_the_guidance_stays_escaped_and_linkless(self):
+    html = MeasurementsViewTest.plotted(MeasurementsViewTest())
+    self.assertNotIn("Why there is no chart.", html)
+    hostile = '<img src=x onerror=alert(1)>'
+    s1 = source("S1", PAPER_A, accuracy("76.3%", A_76, metric_definition={"unknown": hostile}))
+    refused = render_html([s1, source("S2", PAPER_B, accuracy("74.9%", B_74))], research_question=None)
+    page = Page(refused)
+    self.assertNotIn(hostile, refused)
+    self.assertIn("&lt;img", refused)
+    self.assertEqual([target for target, _text in page.links if target not in set(page.ids)], [])
+
+
+class SourceNameTest(unittest.TestCase):
+
+  def test_a_known_title_is_shown(self):
+    html = render_html([report_for({}, title="Fast Detectors for Edge Devices")], research_question=None)
+    self.assertIn("S1 · Fast Detectors for Edge Devices", html)
+    self.assertNotIn("Untitled source", html)
+
+  def test_the_pdf_file_name_replaces_untitled_source(self):
+    report = report_for({}, title=None)
+    report.file = "inbox/papers/fast-detectors.pdf"
+    html = render_html([report], research_question=None)
+    self.assertIn("S1 · fast-detectors.pdf", html)
+    self.assertNotIn("Untitled source", html)
+
+  def test_a_hostile_file_name_is_escaped(self):
+    report = report_for({}, title=None)
+    report.file = 'inbox/<img src=x onerror=alert(1)>.pdf'
+    html = render_html([report], research_question=None)
+    self.assertNotIn("<img", html)
+    self.assertIn("&lt;img", html)
+
+  def test_untitled_remains_only_when_nothing_is_known(self):
+    report = report_for({}, title=None)
+    report.file = None
+    self.assertIn("S1 · Untitled source", render_html([report], research_question=None))

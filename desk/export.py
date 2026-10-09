@@ -14,6 +14,10 @@ status but says so; the export never presents an unchecked quotation as
 verified. Contradictions are listed side by side, each quotation with its own
 check result, and are never resolved.
 
+``exports/comparison-by-dimension.csv`` holds the same cells in eleven columns,
+one row per source and dimension, which is easier to read on a narrow screen
+(``build_narrow_csv``).
+
 The same checked reports also render ``exports/comparison.html``, the
 citation-linked evidence view (see ``viewer``), so the CSV and the view can
 never disagree. ``select_reports`` is the one scope and refusal rule both
@@ -45,6 +49,7 @@ from desk.vocabulary import DIMENSIONS, STATUSES
 
 EXPORT_PATH = "exports/comparison.csv"
 VIEW_PATH = "exports/comparison.html"
+NARROW_PATH = "exports/comparison-by-dimension.csv"
 QUESTION_MAX_CHARS = 500
 DESK_JSON_MAX_BYTES = 256 * 1024
 # Excel stores at most 32,767 characters in a cell and silently cuts the rest
@@ -175,14 +180,42 @@ def _row(report: SourceReport) -> list[str]:
   return row + qualifications
 
 
+NARROW_HEADER = [
+  "Source", "Title", "File", "Dimension", "Status", "Finding", "Evidence", "Check",
+  "Note", "Checked absences", "Contradictions",
+]
+
+
+def narrow_rows(report: SourceReport) -> list[list[str]]:
+  """The same cells as ``_row``, one row per dimension (see ``build_narrow_csv``)."""
+  wide = _row(report)
+  base = 3 + 4 * len(DIMENSIONS)
+  rows = []
+  for index, (_dimension, label) in enumerate(DIMENSIONS):
+    first, extra = 3 + 4 * index, base + 3 * index
+    rows.append([report.source_id, report.title or "", report.file or "", label, *wide[first:first + 4], *wide[extra:extra + 3]])
+  return rows
+
+
+def build_narrow_csv(reports: list[SourceReport]) -> bytes:
+  """The same findings as ``build_csv`` in eleven columns instead of 45: one row
+  per source and dimension, so a narrow screen shows a short row of related
+  cells instead of a very wide one. Every status, finding, quotation, check,
+  note, checked absence and contradiction is the same text."""
+  return _write_csv(NARROW_HEADER, [(report, row) for report in reports for row in narrow_rows(report)])
+
+
 def build_csv(reports: list[SourceReport]) -> bytes:
   """The CSV bytes, or ``cell_too_large`` instead of a cell a spreadsheet would cut."""
-  header = header_row()
+  return _write_csv(header_row(), [(report, _row(report)) for report in reports])
+
+
+def _write_csv(header: list[str], rows: list[tuple[SourceReport, list[str]]]) -> bytes:
   out = io.StringIO()
   writer = csv.writer(out, lineterminator="\r\n")
   writer.writerow(header)
-  for report in reports:
-    row = [safe_cell(cell) for cell in _row(report)]
+  for report, raw in rows:
+    row = [safe_cell(cell) for cell in raw]
     for column, cell in zip(header, row):
       if len(cell) > MAX_CELL_CHARS:
         raise DeskError(
@@ -229,18 +262,22 @@ def export_comparison(binding: ProjectBinding, _arguments: dict) -> dict:
   with binding.open() as project:
     selection = select_reports(project)
     data = build_csv(selection.reports)
+    narrow = build_narrow_csv(selection.reports)
     view = render_html(selection.reports, research_question=selection.research_question).encode("utf-8")
     with project_lock(binding.app_storage_dir, binding.project_id):
       revision = project.write_atomic(EXPORT_PATH, data)
+      narrow_revision = project.write_atomic(NARROW_PATH, narrow)
       view_revision = project.write_atomic(VIEW_PATH, view)
   checks = [check for report in selection.reports for check in report.quote_checks()]
   verified = sum(check.result == VERIFIED for check in checks)
   return {
     "file": EXPORT_PATH,
     "view": VIEW_PATH,
+    "narrow_file": NARROW_PATH,
     "sources": [report.source_id for report in selection.reports],
     "quotes_verified": verified,
     "quotes_failed": len(checks) - verified,
     "revision": revision,
     "view_revision": view_revision,
+    "narrow_revision": narrow_revision,
   }

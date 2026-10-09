@@ -25,8 +25,9 @@ Möbius Project app for the Möbius Hackathon 2026 Private Pro Desk challenge. R
 
 The app is fully implemented: manifest, launcher, Paper comparison template and agent guidance, service entrypoint, project binding and status, PDF registration, evidence checking, CSV and citation-linked HTML comparison, structured measurement comparison, arXiv discovery and a project reference library.
 
-- Local version (`mobius.json`): `0.6.3`, pending the owner's review. It is not committed or installed.
-- Hosted Möbius instance: still on `0.6.2`. Behaviour of 0.6.3 there is unverified.
+- Hosted Möbius instance: `0.6.3` is installed (app id 10, per the owner's earlier hosted update report). Its behaviour there beyond the install is not verified from this repository.
+- Local code (`mobius.json`): `0.6.4`, preparation for the next update. It is not committed, pushed or installed; nothing of 0.6.4 has been exercised in the hosted instance.
+- Known and unresolved: the comparison preview sometimes works only after switching to another file and back. Evidence Desk writes its exports atomically and no defect was found in its code; the suspected cause is Möbius's own file preview (polling refresh, and it places its own tags before the page's doctype). Not reproduced and not fixed.
 - The organizer confirmed that a Möbius MCP connector is not required; the goal is a Claude for Science style Project app. Any note saying the app is at an initial implementation stage is outdated.
 - Do not add Crossref or other new external API calls until the owner asks for them. Do not download PDFs; owners upload papers to `inbox/`.
 
@@ -37,6 +38,7 @@ Version history (what changed, not the current state):
 - 0.5.0 added measurements with strict comparability rules; values are plotted only when every requirement is met.
 - 0.6.0 added arXiv search, lookup and the reference library. 0.6.1 added the launcher guide, copyable prompts and matching template actions. 0.6.2 redesigned the launcher.
 - 0.6.3 adds upload and project-file guidance, the file explanation in the launcher and a purple accent for the quick prompts.
+- 0.6.4 (local, unreleased) adds plain-English no-chart explanations in the measurements view, source titles verified on PDF page 1 (else the PDF file name; embedded metadata alone is never trusted), the compact `exports/comparison-by-dimension.csv` and concise plain-English summary guidance.
 
 ## Development rules
 
@@ -51,7 +53,7 @@ Measurements (`desk/measurements.py`, pure; user-facing description in README):
 
 Exports and views:
 
-- The CSV keeps its original 27 columns in place and appends note, checked-absence and contradiction columns per dimension. A cell over `MAX_CELL_CHARS` (32,000, below Excel's 32,767) refuses the export with `cell_too_large`.
+- The CSV keeps its original 27 columns in place and appends note, checked-absence and contradiction columns per dimension. `exports/comparison-by-dimension.csv` carries the same cells in 11 columns, one row per source and dimension, for narrow screens. A cell over `MAX_CELL_CHARS` (32,000, below Excel's 32,767) refuses the export with `cell_too_large`.
 - Möbius previews HTML in an `srcdoc` frame, where a plain `#` link navigates to Möbius itself. `viewer.NAV_SCRIPT` (fixed, no data, network or parent access) keeps in-page links working: every internal href must stay a plain `#id` (tested). Everything recorded is HTML-escaped.
 - Creation builders (`build.sh` -> `build_view.py`) run with the platform's Python, not the app environment, so their import chain must not need pypdf. `desk.sources` imports `pdf_text` lazily, `desk.service` imports it eagerly so the Apply smoke run catches a broken environment; `tests/test_build_view.py` enforces this.
 
@@ -97,11 +99,11 @@ docker run --rm -v "$PWD":/work:ro -w /work -e PYTHONDONTWRITEBYTECODE=1 \
 
 Expected skips, to report with their reason:
 
-- On Windows (and any non-Linux system) the file-safety, locking, status and service tests are skipped, because they need Linux `O_NOFOLLOW`, `dir_fd` and `flock` ("needs Linux O_NOFOLLOW, dir_fd and flock"). 71 skipped at 266 tests.
+- On Windows (and any non-Linux system) the file-safety, locking, status and service tests are skipped, because they need Linux `O_NOFOLLOW`, `dir_fd` and `flock` ("needs Linux O_NOFOLLOW, dir_fd and flock"). 73 skipped at 290 tests.
 - On Linux exactly 2 tests skip: the platform-refusal tests, which are "only meaningful where the APIs are missing".
 - Without `pypdf` several test modules fail to import. Do not report such a run as a passing suite.
 
-Last full runs with the locked dependencies (local 0.6.3, 2026-10-07): Windows, Python 3.13.6, 266 tests OK with 71 skipped; Linux, `python:3.12-slim-trixie`, 266 tests OK with 2 skipped, also with `--network none`.
+Last full runs with the locked dependencies (local 0.6.4, uncommitted, 2026-10-09): Windows, Python 3.13.6 in a throwaway venv, 290 tests OK with 73 skipped; Linux, `python:3.12-slim-trixie` (Python 3.12.15), 290 tests OK with 2 skipped. The earlier `--network none` run was not repeated.
 
 ## Validating the app with the Möbius compiler
 

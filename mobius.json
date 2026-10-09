@@ -1,7 +1,7 @@
 {
   "id": "evidence-desk",
   "name": "Evidence Desk",
-  "version": "0.6.3",
+  "version": "0.6.4",
   "description": "Compare AI/ML research papers with findings traced to a source, page and exact quotation.",
   "entry": "index.jsx",
   "offline_capable": false,
@@ -86,7 +86,7 @@
     },
     {
       "name": "export_comparison",
-      "description": "Write exports/comparison.csv and exports/comparison.html for the sources in desk.json compare_sources (all registered sources if empty). The CSV has status, finding, evidence, quotation check, note, checked absences and contradictions for each of the six dimensions; the HTML is the same evidence as a citation-linked matrix plus a Reported measurements table, with dot plots only where every compatibility field matches across sources and is quote-backed. Refuses while an in-scope evidence file is invalid. Takes no arguments.",
+      "description": "Write exports/comparison.csv, exports/comparison-by-dimension.csv (the same cells, one row per source and dimension, easier on a narrow screen) and exports/comparison.html for the sources in desk.json compare_sources (all registered sources if empty). The CSV has status, finding, evidence, quotation check, note, checked absences and contradictions for each of the six dimensions; the HTML is the same evidence as a citation-linked matrix plus a Reported measurements table, with dot plots only where every compatibility field matches across sources and is quote-backed. Refuses while an in-scope evidence file is invalid. Takes no arguments.",
       "input_schema": {
         "type": "object",
         "properties": {},
@@ -151,7 +151,7 @@
       "name": "Paper comparison",
       "kind": "research",
       "description": "Compare research papers on six dimensions, with every finding traced to a page and exact quotation.",
-      "guidance": "Evidence Desk project. Read the evidence-desk skill before working. inbox/ holds the owner's uploads: read only. sources/ and exports/ are written only by Evidence Desk tools: never edit them. You write evidence/, desk.json and synthesis.md. A Reported finding needs a source id, page and exact quotation; otherwise it is Not reported (checked and absent) or Not assessed. Never invent findings. The Evidence comparison Creation and exports/comparison.html show the evidence as a citation-linked matrix; never present values from different papers as directly comparable. search_literature and lookup_reference find arXiv papers; save_reference adds an owner-selected paper to library/, which only Evidence Desk writes. Library metadata is never evidence. The owner adds PDFs by opening inbox/ in the project file list and choosing Upload; you cannot upload, so if inbox/ has no PDFs, say so. Call synthesis.md the research summary; desk.json and README.md are support files.",
+      "guidance": "Evidence Desk project. Read the evidence-desk skill before working. inbox/ holds the owner's uploads: read only. sources/ and exports/ are written only by Evidence Desk tools: never edit them. You write evidence/, desk.json and synthesis.md. A Reported finding needs a source id, page and exact quotation; otherwise it is Not reported (checked and absent) or Not assessed. Never invent findings. The Evidence comparison Creation and exports/comparison.html show the evidence as a citation-linked matrix; never present values from different papers as directly comparable. search_literature and lookup_reference find arXiv papers; save_reference adds an owner-selected paper to library/, which only Evidence Desk writes. Library metadata is never evidence. The owner adds PDFs by opening inbox/ in the project file list and choosing Upload; you cannot upload, so if inbox/ has no PDFs, say so. Call synthesis.md the research summary; desk.json and README.md are support files. Write the summary briefly, in plain English: lead with a short answer to the research question, keep sentences short, explain each technical term in a few words the first time you use it, and keep every [S1 p.5] citation and Not reported / Not assessed statement.",
       "skills": [
         "evidence-desk.md"
       ],

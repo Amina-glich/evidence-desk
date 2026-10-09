@@ -441,6 +441,37 @@ class WorkflowTest(unittest.TestCase):
     self.assertIn("2 of 2 quotations verified", text)
     self.assertIn("This is an evidence matrix.", text)
 
+  def test_the_view_names_papers_by_a_verified_title_or_the_file_name(self):
+    self.add()
+    (self.root / "inbox" / "no-title.pdf").write_bytes(make_pdf([["Second paper with other content"]]))
+    self.add("inbox/no-title.pdf")
+    wrong = make_pdf([["Third paper about something else"]], title="Microsoft Word - draft_v7.docx")
+    (self.root / "inbox" / "wrong-metadata.pdf").write_bytes(wrong)
+    self.add("inbox/wrong-metadata.pdf")
+    self.write_evidence(good_evidence())
+    self.call("export_comparison")
+    text = (self.root / "exports" / "comparison.html").read_text(encoding="utf-8")
+    self.assertIn("S1 · Fast Detectors for Edge Devices", text)
+    self.assertIn("S2 · no-title.pdf", text)
+    self.assertIn("S3 · wrong-metadata.pdf", text)
+    self.assertNotIn("Microsoft Word", text)
+    self.assertNotIn("Untitled source", text)
+    csv_text = (self.root / "exports" / "comparison.csv").read_text(encoding="utf-8-sig")
+    self.assertNotIn("Microsoft Word", csv_text)
+    self.assertIn("S3,wrong-metadata.pdf,inbox/wrong-metadata.pdf", csv_text)
+
+  def test_export_also_writes_the_narrow_csv_with_the_same_findings(self):
+    self.add()
+    self.write_evidence(good_evidence())
+    reply = self.call("export_comparison")
+    narrow = (self.root / "exports" / "comparison-by-dimension.csv").read_bytes()
+    self.assertEqual(reply["narrow_file"], "exports/comparison-by-dimension.csv")
+    self.assertEqual(reply["narrow_revision"], hashlib.sha256(narrow).hexdigest())
+    text = narrow.decode("utf-8-sig")
+    self.assertTrue(text.startswith("Source,Title,File,Dimension,Status,Finding,Evidence,Check"))
+    self.assertIn(QUOTE_DATA, text)
+    self.assertEqual(text.count("\r\nS1,"), 6)
+
   def test_creation_builder_matches_the_exported_view(self):
     self.add()
     (self.root / "inbox" / "other.pdf").write_bytes(make_pdf([["Second paper with other content"]]))
