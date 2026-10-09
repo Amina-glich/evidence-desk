@@ -4,22 +4,22 @@ A Möbius Project app for comparing AI/ML research papers with source-grounded
 evidence: every extracted value points to a source, page and exact quote, and
 missing information is labelled “Not reported” instead of guessed.
 
-**Status: local code is preparation for 0.6.5; the hosted app is 0.6.4.** The app has a manifest, a launcher, a Project template
+**Status: local code is preparation for 0.6.6; the hosted app is 0.6.5.** The app has a manifest, a launcher, a Project template
 with agent guidance, a service with seven agent tools — `project_status`,
 `add_source` (register an uploaded PDF and extract its page text with
 pypdf), `check_evidence` (deterministic quotation checking),
 `export_comparison` (comparison CSV and view), and arXiv discovery:
 `search_literature`, `lookup_reference` and `save_reference` — and a
 citation-linked **Evidence comparison** Creation. Version 0.4.1 was tested
-end to end in a hosted Möbius instance, and 0.6.4 (plain-English no-chart
-explanations, a compact `exports/comparison-by-dimension.csv`, shorter
-plain-English summary guidance and paper titles) is the version the owner
-reports installed and tested live there; that live test found 0.6.4 still
-showed PDF file names instead of titles. The code in this repository is
-`0.6.5` in `mobius.json`: it also reads a title from a source's stored
-first-page text when the PDF has no usable embedded title, keeping the PDF
-file name as the fallback. Nothing of 0.6.5 is committed, pushed or installed
-yet, so none of it has been exercised in the hosted instance. Features added
+end to end in a hosted Möbius instance. The owner reports 0.6.5 installed
+there (it reads a source's title from its stored first-page text when the PDF
+has no usable embedded title, keeping the PDF file name as the fallback). The
+live 0.6.5 export recognized one paper's title but still showed another's PDF
+file name, because that page begins with a publisher permission notice. The
+code in this repository is `0.6.6` in `mobius.json`: it skips a recognized
+publisher permission, licence or copyright notice before reading the title.
+Nothing of 0.6.6 is committed, pushed or installed yet, so none of it has been
+exercised in the hosted instance. Features added
 after 0.4.1 were covered by the offline test suite; only what was exercised in
 the hosted instance counts as live-verified. Publisher-DOI lookup (Crossref) is
 not implemented yet.

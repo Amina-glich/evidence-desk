@@ -351,3 +351,122 @@ class FirstPageTitleTest(unittest.TestCase):
 
   def test_text_is_taken_from_the_page_with_spacing_normalized(self):
     self.assertEqual(self.title("Fast  Detectors\u00a0for Edge Devices\nAbstract\n"), "Fast Detectors for Edge Devices")
+
+
+class PublisherNoticeTitleTest(unittest.TestCase):
+  """A permission or licence notice before the title is skipped; anything uncertain stays unread."""
+
+  NOTICE = (
+    "Provided proper attribution is provided, Example Publisher hereby grants permission to\n"
+    "reproduce the tables and figures in this paper solely for use in journalistic or\n"
+    "scholarly works.\n"
+  )
+  AUTHORS = "Alex Example*\nExample Lab\nalex@example.org\nSam Sample\nSample University\n"
+
+  def title(self, page, metadata=None):
+    from desk.evidence import display_title, first_page_title
+    self.assertEqual(display_title(metadata, page, "inbox/s1.pdf"), first_page_title(page) or "s1.pdf")
+    return first_page_title(page)
+
+  def test_a_title_after_a_three_line_permission_notice_is_read(self):
+    page = self.NOTICE + "Synthetic Methods for Reliable Detectors\n" + self.AUTHORS + "Abstract\nWe study detection.\n"
+    self.assertEqual(self.title(page), "Synthetic Methods for Reliable Detectors")
+
+  def test_a_wrapped_title_after_a_notice_is_joined(self):
+    page = self.NOTICE + "Synthetic Methods for\nReliable Detectors\n" + self.AUTHORS
+    self.assertEqual(self.title(page), "Synthetic Methods for Reliable Detectors")
+
+  def test_other_notice_wordings_are_skipped(self):
+    for notice in (
+      "Permission to make digital or hard copies of all or part of this work for personal use is\ngranted without fee.\n",
+      "This work is licensed under a Creative Commons Attribution 4.0\nInternational License.\n",
+      "Copyright 2017 Example Publisher.\n",
+      "All rights reserved.\n",
+    ):
+      page = notice + "Synthetic Methods for Reliable Detectors\n" + self.AUTHORS
+      self.assertEqual(self.title(page), "Synthetic Methods for Reliable Detectors", notice)
+
+  def test_a_copyright_notice_is_matched_as_a_notice_not_only_as_a_header(self):
+    from desk.evidence import _NOTICE_START
+    for line in ("Copyright 2017 Example Publisher.", "© 2017 Example Publisher.", "All rights reserved."):
+      self.assertTrue(_NOTICE_START.match(line), line)
+
+  def test_a_copyright_notice_wrapped_over_several_lines_is_skipped_whole(self):
+    notice = "Copyright 2017 Example Publisher. All rights reserved. No part of this paper may be\nreproduced without permission.\n"
+    page = notice + "Synthetic Methods for Reliable Detectors\n" + self.AUTHORS
+    self.assertEqual(self.title(page), "Synthetic Methods for Reliable Detectors")
+
+  def test_a_one_line_copyright_without_a_full_stop_is_still_skipped(self):
+    page = "© 2017 Example Publisher\nSynthetic Methods for Reliable Detectors\n" + self.AUTHORS
+    self.assertEqual(self.title(page), "Synthetic Methods for Reliable Detectors")
+
+  def test_a_notice_followed_by_no_clear_title_gives_the_file_name(self):
+    page = self.NOTICE + "We study running text about detectors in this paragraph\nand more text that goes on for a while\n"
+    self.assertIsNone(self.title(page))
+    self.assertIsNone(self.title(self.NOTICE))
+
+  def test_text_that_only_looks_like_a_notice_start_is_not_skipped_without_an_end(self):
+    page = "Permission Models for Safe Detectors\n" + self.AUTHORS
+    self.assertEqual(self.title(page), "Permission Models for Safe Detectors")
+
+  def test_a_wrong_metadata_title_does_not_beat_the_page_after_a_notice(self):
+    page = self.NOTICE + "Synthetic Methods for Reliable Detectors\n" + self.AUTHORS
+    self.assertEqual(self.title(page, metadata="Microsoft Word - draft.docx"), "Synthetic Methods for Reliable Detectors")
+
+
+class StoredS1LayoutTest(unittest.TestCase):
+  """The notice wording reported from a real source's stored page 1, followed by its title.
+
+  The notice sentence and the title are the real text; the exact line breaks
+  (the notice on lines 1-3, the title on line 4) follow the report of that
+  stored page, and other plausible wraps are covered so the result does not
+  depend on one break position."""
+
+  SENTENCE = (
+    "Provided proper attribution is provided, Google hereby grants permission to reproduce the tables "
+    "and figures in this paper solely for use in journalistic or scholarly works."
+  )
+  WRAPPED = (
+    "Provided proper attribution is provided, Google hereby grants permission to\n"
+    "reproduce the tables and figures in this paper solely for use in journalistic or\n"
+    "scholarly works.\n"
+  )
+  TITLE = "Attention Is All You Need"
+  AUTHORS = (
+    "Ashish Vaswani*\nGoogle Brain\navaswani@google.com\nNoam Shazeer*\nGoogle Brain\nnoam@google.com\n"
+    "Niki Parmar*\nGoogle Research\nnikip@google.com\n"
+    "Abstract\nThe dominant sequence transduction models are based on complex recurrent networks.\n"
+  )
+
+  def title(self, notice, authors=None):
+    from desk.evidence import first_page_title
+    return first_page_title(notice + self.TITLE + "\n" + (self.AUTHORS if authors is None else authors))
+
+  def test_the_three_line_notice_is_skipped_and_the_title_is_read(self):
+    self.assertEqual(self.title(self.WRAPPED), self.TITLE)
+
+  def test_the_result_does_not_depend_on_where_the_notice_wraps(self):
+    words = self.SENTENCE.split()
+    for width in (1, 2, 3, 4, 6, 9, 13, len(words)):
+      lines = [" ".join(words[start:start + width]) for start in range(0, len(words), width)]
+      if len(lines) > 8:
+        continue
+      with self.subTest(lines=len(lines)):
+        self.assertEqual(self.title("\n".join(lines) + "\n"), self.TITLE)
+
+  def test_the_title_is_found_with_other_author_block_layouts(self):
+    one_line = "Ashish Vaswani* Google Brain avaswani@google.com Noam Shazeer* Google Brain\nAbstract\nx\n"
+    for authors in (one_line, "Abstract\nThe dominant sequence transduction models.\n", "\nAshish Vaswani*\nGoogle Brain\n"):
+      self.assertEqual(self.title(self.WRAPPED, authors), self.TITLE, authors)
+
+  def test_display_title_uses_it_when_the_pdf_has_no_embedded_title(self):
+    from desk.evidence import display_title
+    page = self.WRAPPED + self.TITLE + "\n" + self.AUTHORS
+    self.assertEqual(display_title(None, page, "inbox/paper.pdf"), self.TITLE)
+    self.assertEqual(display_title("Microsoft Word - x.docx", page, "inbox/paper.pdf"), self.TITLE)
+
+  def test_the_parser_names_no_paper(self):
+    from pathlib import Path
+    source = (Path(__file__).resolve().parent.parent / "desk" / "evidence.py").read_text(encoding="utf-8")
+    for specific in (self.TITLE, "Vaswani", "Shazeer"):
+      self.assertNotIn(specific, source)

@@ -482,6 +482,34 @@ class WorkflowTest(unittest.TestCase):
     self.assertEqual((self.root / "evidence" / f"{reply['source_id']}.json").read_bytes(), evidence_before)
     self.assertIsNone(json.loads((self.root / "sources" / reply["source_id"] / "source.json").read_text())["title"])
 
+  def test_a_title_after_a_publisher_notice_is_shown_and_stored_data_stays_untouched(self):
+    notice = [
+      "Provided proper attribution is provided, Example Publisher hereby grants permission to",
+      "reproduce the tables and figures in this paper solely for use in journalistic or",
+      "scholarly works.",
+    ]
+    first_page = notice + [
+      "Synthetic Methods for Reliable Detectors", "Alex Example*", "Example Lab", "alex@example.org",
+      "Abstract. We study the training of detectors.",
+    ]
+    (self.root / "inbox" / "noticed.pdf").write_bytes(make_pdf([first_page, PAPER_PAGES[1], PAPER_PAGES[2]]))
+    reply = self.add("inbox/noticed.pdf")
+    source_id = reply["source_id"]
+    self.write_evidence(good_evidence(source_id), source=source_id)
+    protected = [
+      path for root in ("sources", "evidence") for path in sorted((self.root / root).rglob("*")) if path.is_file()
+    ]
+    before = {path: path.read_bytes() for path in protected}
+    self.call("export_comparison")
+    text = (self.root / "exports" / "comparison.html").read_text(encoding="utf-8")
+    self.assertIn(f"{source_id} · Synthetic Methods for Reliable Detectors", text)
+    self.assertNotIn(f"{source_id} · noticed.pdf", text)
+    csv_text = (self.root / "exports" / "comparison.csv").read_text(encoding="utf-8-sig")
+    self.assertIn(f"{source_id},Synthetic Methods for Reliable Detectors,inbox/noticed.pdf", csv_text)
+    self.assertEqual({path: path.read_bytes() for path in protected}, before)
+    pages = json.loads((self.root / "sources" / source_id / "pages.json").read_text())["pages"]
+    self.assertIn("scholarly works.", pages[0]["text"])
+
   def test_export_also_writes_the_narrow_csv_with_the_same_findings(self):
     self.add()
     self.write_evidence(good_evidence())

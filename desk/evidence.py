@@ -492,6 +492,15 @@ _HEADER_LINE = re.compile(
   r"^(arxiv\b|preprint|under review|published\b|proceedings|accepted\b|submitted\b|conference|journal\b|"
   r"workshop|technical report|www\.|https?://|doi\b|©|copyright|\d+$|page \d|vol\.)", re.IGNORECASE,
 )
+# The first line of a publisher notice (permission, licence, copyright) that can
+# precede the title. It runs on to the line that ends the sentence.
+_NOTICE_START = re.compile(
+  r"^(provided proper attribution|copyright|©|permission (is hereby )?(to|granted)|[\w ,]*hereby grants? permission|"
+  r"this (work|article|paper|document) is (licensed|published|distributed)|licensed under|"
+  r"all rights reserved|creative commons|reproduce the tables|republication|reprints?|"
+  r"to appear in|accepted (at|to|for|by)|under review|submitted to|published (by|in|as))", re.IGNORECASE,
+)
+NOTICE_MAX_LINES = 8
 _SECTION_LINE = re.compile(r"^(abstract|keywords?|index terms|summary|introduction|1\.? ?introduction)\b", re.IGNORECASE)
 _AFFILIATION = re.compile(
   r"@|[*†‡§¶∗]|\b(university|universit[äée]|institute|laborator(y|ies)|labs?|department|school|college|"
@@ -516,6 +525,18 @@ def _incomplete(title: str) -> bool:
   return title.rstrip().endswith((":", "-", ",")) or last.casefold() in _TITLE_STOP_WORDS
 
 
+def _notice_end(lines: list[str], start: int) -> int | None:
+  """The index of the line that ends a notice beginning at ``start`` (the first
+  line ending a sentence), or None when none does within a few lines: then the
+  text is not treated as a notice."""
+  for position in range(start, min(len(lines), start + NOTICE_MAX_LINES)):
+    if not lines[position] and position > start:
+      return None
+    if lines[position].endswith((".", "。")):
+      return position
+  return None
+
+
 def first_page_title(first_page: str | None) -> str | None:
   """The title printed at the top of page 1, or None when it cannot be told
   with confidence. The title is the first lines before the first line that
@@ -525,8 +546,15 @@ def first_page_title(first_page: str | None) -> str | None:
   from the stored page text, not a claim about the paper."""
   lines = [" ".join(normalize_quote(line).split()) for line in (first_page or "").splitlines()[:TITLE_SCAN_LINES * 2]]
   start = 0
-  while start < len(lines) and (not lines[start] or _HEADER_LINE.match(lines[start])):
-    start += 1
+  while start < len(lines):
+    line = lines[start]
+    end = _notice_end(lines, start) if _NOTICE_START.match(line) else None
+    if end is not None:
+      start = end + 1
+    elif not line or _HEADER_LINE.match(line):
+      start += 1
+    else:
+      break
   collected: list[str] = []
   for line in lines[start:start + TITLE_SCAN_LINES]:
     if not line:
