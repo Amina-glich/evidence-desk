@@ -279,9 +279,14 @@ class DisplayTitleTest(unittest.TestCase):
     self.assertEqual(self.title("Fast Detectors for Edge Devices"), "Fast Detectors for Edge Devices")
     self.assertEqual(self.title("  fast   detectors for edge devices "), "fast detectors for edge devices")
 
-  def test_a_title_the_first_page_does_not_show_is_not_trusted(self):
+  def test_a_metadata_title_the_first_page_does_not_show_is_replaced_by_the_pages_own_title(self):
     for wrong in ("Microsoft Word - draft_v7.docx", "Some Other Paper Entirely", "untitled"):
-      self.assertEqual(self.title(wrong), "fast-detectors.pdf", wrong)
+      self.assertEqual(self.title(wrong), "Fast Detectors for Edge Devices", wrong)
+
+  def test_a_wrong_metadata_title_is_never_shown_when_the_page_has_no_readable_title(self):
+    page = "We study detectors in this running paragraph\nthat never reaches a clear title block\n"
+    for wrong in ("Microsoft Word - draft_v7.docx", "Some Other Paper Entirely"):
+      self.assertEqual(self.title(wrong, page), "fast-detectors.pdf", wrong)
 
   def test_a_title_only_deep_in_the_page_is_not_trusted(self):
     page = "Header text. " * 400 + "Fast Detectors for Edge Devices"
@@ -291,10 +296,58 @@ class DisplayTitleTest(unittest.TestCase):
     self.assertEqual(self.title("Abstract", "Abstract\nText"), "fast-detectors.pdf")
 
   def test_without_metadata_or_page_text_the_file_name_is_used(self):
-    self.assertEqual(self.title(None), "fast-detectors.pdf")
+    self.assertEqual(self.title(None, None), "fast-detectors.pdf")
     self.assertEqual(self.title("Fast Detectors for Edge Devices", None), "fast-detectors.pdf")
     self.assertEqual(self.title(None, None, "inbox/a/b.pdf"), "b.pdf")
+
+  def test_a_source_without_a_metadata_title_gets_the_title_printed_on_page_one(self):
+    # The case of sources registered with no embedded title (or before title detection existed).
+    self.assertEqual(self.title(None), "Fast Detectors for Edge Devices")
+    self.assertEqual(self.title(""), "Fast Detectors for Edge Devices")
 
   def test_nothing_known_gives_no_title(self):
     self.assertIsNone(self.title(None, None, None))
     self.assertIsNone(self.title(None, None, ""))
+
+
+class FirstPageTitleTest(unittest.TestCase):
+  """Reading a title from stored page 1: confident, or nothing (the file name is the fallback)."""
+
+  def title(self, page):
+    from desk.evidence import first_page_title
+    return first_page_title(page)
+
+  def test_a_title_followed_by_authors_or_an_abstract_is_read(self):
+    self.assertEqual(self.title("Fast Detectors for Edge Devices\nA. Author, B. Writer\nAbstract. We study.\n"), "Fast Detectors for Edge Devices")
+    self.assertEqual(self.title("Fast Detectors for Edge Devices\nAbstract. We study real-time detection.\n"), "Fast Detectors for Edge Devices")
+    self.assertEqual(self.title("Learning Fast and Slow\n\nJane Doe\n"), "Learning Fast and Slow")
+
+  def test_a_wrapped_title_is_joined(self):
+    self.assertEqual(self.title("Fast Detectors for\nEdge Devices\nA. Author\nAbstract. x\n"), "Fast Detectors for Edge Devices")
+    self.assertEqual(
+      self.title("Deep Residual Learning for Image\nRecognition\nKaiming He Xiangyu Zhang\nAbstract\n"),
+      "Deep Residual Learning for Image Recognition",
+    )
+
+  def test_a_preprint_header_and_affiliations_are_skipped(self):
+    page = "arXiv:1706.03762v5 [cs.CL] 6 Dec 2017\nAttention Is All You Need\nAshish Vaswani*\nGoogle Brain\n"
+    self.assertEqual(self.title(page), "Attention Is All You Need")
+
+  def test_unclear_pages_give_no_title(self):
+    for page in (
+      None, "", "\n\n",
+      "Abstract\nWe study things.\n",
+      "Second paper with other content\n",
+      "We study things in this long paragraph about detectors and more\nand more text here that goes on\n",
+      "Our model reaches ninety percent accuracy.\nAbstract\n",
+      "Two Words\nAbstract\n",
+      "A " + "very " * 60 + "long first line\nAbstract\n",
+    ):
+      self.assertIsNone(self.title(page), page)
+
+  def test_a_title_that_never_ends_in_a_boundary_is_not_guessed(self):
+    self.assertIsNone(self.title("\n".join(["some plain running text line here"] * 20)))
+    self.assertIsNone(self.title("Fast Detectors for\n"))
+
+  def test_text_is_taken_from_the_page_with_spacing_normalized(self):
+    self.assertEqual(self.title("Fast  Detectors\u00a0for Edge Devices\nAbstract\n"), "Fast Detectors for Edge Devices")

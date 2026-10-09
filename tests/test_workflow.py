@@ -24,7 +24,7 @@ import build_view
 from desk import service
 from desk.project_fs import project_lock
 from desk.vocabulary import DIMENSIONS
-from tests.pdf_fixtures import make_pdf, paper_pdf
+from tests.pdf_fixtures import PAPER_PAGES, make_pdf, paper_pdf
 from tests.test_measurements import A_76, B_74, PAPER_A, PAPER_B, accuracy
 from tests.support import POSIX, REPO_ROOT, SKIP_REASON, Platform, tool_envelope
 
@@ -459,6 +459,28 @@ class WorkflowTest(unittest.TestCase):
     csv_text = (self.root / "exports" / "comparison.csv").read_text(encoding="utf-8-sig")
     self.assertNotIn("Microsoft Word", csv_text)
     self.assertIn("S3,wrong-metadata.pdf,inbox/wrong-metadata.pdf", csv_text)
+
+  def test_an_older_source_without_a_metadata_title_shows_the_title_on_its_first_page(self):
+    # A source registered with no embedded title: only the stored record and page text exist.
+    (self.root / "inbox" / "old.pdf").write_bytes(make_pdf(PAPER_PAGES))
+    reply = self.add("inbox/old.pdf")
+    self.assertIsNone(reply["title"])
+    self.write_evidence(good_evidence(reply["source_id"]), source=reply["source_id"])
+    before = {
+      path: path.read_bytes()
+      for path in sorted((self.root / "sources").rglob("*")) if path.is_file()
+    }
+    evidence_before = (self.root / "evidence" / f"{reply['source_id']}.json").read_bytes()
+    self.call("export_comparison")
+    text = (self.root / "exports" / "comparison.html").read_text(encoding="utf-8")
+    self.assertIn(f"{reply['source_id']} · Fast Detectors for Edge Devices", text)
+    csv_text = (self.root / "exports" / "comparison.csv").read_text(encoding="utf-8-sig")
+    self.assertIn(f"{reply['source_id']},Fast Detectors for Edge Devices,inbox/old.pdf", csv_text)
+    # Registration data, page text and evidence are untouched: the title is only computed for display.
+    after = {path: path.read_bytes() for path in before}
+    self.assertEqual(after, before)
+    self.assertEqual((self.root / "evidence" / f"{reply['source_id']}.json").read_bytes(), evidence_before)
+    self.assertIsNone(json.loads((self.root / "sources" / reply["source_id"] / "source.json").read_text())["title"])
 
   def test_export_also_writes_the_narrow_csv_with_the_same_findings(self):
     self.add()

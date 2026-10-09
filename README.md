@@ -4,22 +4,24 @@ A Möbius Project app for comparing AI/ML research papers with source-grounded
 evidence: every extracted value points to a source, page and exact quote, and
 missing information is labelled “Not reported” instead of guessed.
 
-**Status: local code is preparation for 0.6.4; the hosted app is 0.6.3.** The app has a manifest, a launcher, a Project template
+**Status: local code is preparation for 0.6.5; the hosted app is 0.6.4.** The app has a manifest, a launcher, a Project template
 with agent guidance, a service with seven agent tools — `project_status`,
 `add_source` (register an uploaded PDF and extract its page text with
 pypdf), `check_evidence` (deterministic quotation checking),
 `export_comparison` (comparison CSV and view), and arXiv discovery:
 `search_literature`, `lookup_reference` and `save_reference` — and a
 citation-linked **Evidence comparison** Creation. Version 0.4.1 was tested
-end to end in a hosted Möbius instance, and 0.6.3 (upload and file guidance,
-a purple accent for the quick prompts) is installed there. The code in this
-repository is `0.6.4` in `mobius.json`: it adds plain-English no-chart
-explanations, paper titles verified on the first page (else the PDF file
-name), a compact `exports/comparison-by-dimension.csv` and shorter plain-English
-summary guidance. Nothing of 0.6.4 is committed, pushed or installed yet, so
-none of it has been exercised in the hosted instance. Features added after
-0.4.1 were covered by the offline test suite; only what was exercised in the
-hosted instance counts as live-verified. Publisher-DOI lookup (Crossref) is
+end to end in a hosted Möbius instance, and 0.6.4 (plain-English no-chart
+explanations, a compact `exports/comparison-by-dimension.csv`, shorter
+plain-English summary guidance and paper titles) is the version the owner
+reports installed and tested live there; that live test found 0.6.4 still
+showed PDF file names instead of titles. The code in this repository is
+`0.6.5` in `mobius.json`: it also reads a title from a source's stored
+first-page text when the PDF has no usable embedded title, keeping the PDF
+file name as the fallback. Nothing of 0.6.5 is committed, pushed or installed
+yet, so none of it has been exercised in the hosted instance. Features added
+after 0.4.1 were covered by the offline test suite; only what was exercised in
+the hosted instance counts as live-verified. Publisher-DOI lookup (Crossref) is
 not implemented yet.
 
 ## Literature discovery and the reference library
@@ -62,8 +64,7 @@ percent signs that must agree between unit and quotation). Each plotted
 point links to the verified quotation that shows its value. Plots never
 rank values and say they are not controlled experiments.
 
-Each paper is named by the title printed at the top of its first PDF page (the PDF's embedded title is used only when it appears there), or by its PDF
-file name; embedded metadata is never trusted on its own.
+Each paper is named by its PDF's embedded title when that title appears at the top of page 1, otherwise by the title read from the top of the stored page-1 text (only when the title block is clearly delimited by an author, affiliation, abstract or blank line), otherwise by its PDF file name. The name is computed when the view is built, from stored data; registered sources, page text and evidence are never changed. It is a label, not evidence, and embedded metadata is never trusted on its own.
 
 The page is self-contained (nothing remote) and every recorded text is
 HTML-escaped.

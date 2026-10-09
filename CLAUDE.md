@@ -25,8 +25,8 @@ Möbius Project app for the Möbius Hackathon 2026 Private Pro Desk challenge. R
 
 The app is fully implemented: manifest, launcher, Paper comparison template and agent guidance, service entrypoint, project binding and status, PDF registration, evidence checking, CSV and citation-linked HTML comparison, structured measurement comparison, arXiv discovery and a project reference library.
 
-- Hosted Möbius instance: `0.6.3` is installed (app id 10, per the owner's earlier hosted update report). Its behaviour there beyond the install is not verified from this repository.
-- Local code (`mobius.json`): `0.6.4`, preparation for the next update. It is not committed, pushed or installed; nothing of 0.6.4 has been exercised in the hosted instance.
+- Hosted Möbius instance: `0.6.4` is installed (app id 10; commit `5da2f72`, per the owner's report of a live 0.6.4 test). That test found source titles still showing PDF file names. Behaviour there beyond that report is not verified from this repository.
+- Local code (`mobius.json`): `0.6.5`, preparation for the next update. It is not committed, pushed or installed; nothing of 0.6.5 has been exercised in the hosted instance.
 - Known and unresolved: the comparison preview sometimes works only after switching to another file and back. Evidence Desk writes its exports atomically and no defect was found in its code; the suspected cause is Möbius's own file preview (polling refresh, and it places its own tags before the page's doctype). Not reproduced and not fixed.
 - The organizer confirmed that a Möbius MCP connector is not required; the goal is a Claude for Science style Project app. Any note saying the app is at an initial implementation stage is outdated.
 - Do not add Crossref or other new external API calls until the owner asks for them. Do not download PDFs; owners upload papers to `inbox/`.
@@ -38,7 +38,8 @@ Version history (what changed, not the current state):
 - 0.5.0 added measurements with strict comparability rules; values are plotted only when every requirement is met.
 - 0.6.0 added arXiv search, lookup and the reference library. 0.6.1 added the launcher guide, copyable prompts and matching template actions. 0.6.2 redesigned the launcher.
 - 0.6.3 adds upload and project-file guidance, the file explanation in the launcher and a purple accent for the quick prompts.
-- 0.6.4 (local, unreleased) adds plain-English no-chart explanations in the measurements view, source titles verified on PDF page 1 (else the PDF file name; embedded metadata alone is never trusted), the compact `exports/comparison-by-dimension.csv` and concise plain-English summary guidance.
+- 0.6.4 added plain-English no-chart explanations in the measurements view, source titles (embedded metadata only when it appears on page 1, else the PDF file name), the compact `exports/comparison-by-dimension.csv` and concise plain-English summary guidance. Live, titles still showed file names: 0.6.4 had no way to read a title when the PDF metadata had none.
+- 0.6.5 (local, unreleased) reads the title from the stored page-1 text (`first_page_title` in `desk/evidence.py`) when no embedded title verifies, so existing registered sources get a title without re-registration; the file name stays the fallback. Conservative on purpose: a title is returned only when a clear boundary (author, affiliation, abstract or blank line) follows it.
 
 ## Development rules
 
@@ -99,11 +100,11 @@ docker run --rm -v "$PWD":/work:ro -w /work -e PYTHONDONTWRITEBYTECODE=1 \
 
 Expected skips, to report with their reason:
 
-- On Windows (and any non-Linux system) the file-safety, locking, status and service tests are skipped, because they need Linux `O_NOFOLLOW`, `dir_fd` and `flock` ("needs Linux O_NOFOLLOW, dir_fd and flock"). 73 skipped at 290 tests.
+- On Windows (and any non-Linux system) the file-safety, locking, status and service tests are skipped, because they need Linux `O_NOFOLLOW`, `dir_fd` and `flock` ("needs Linux O_NOFOLLOW, dir_fd and flock"). 74 skipped at 299 tests.
 - On Linux exactly 2 tests skip: the platform-refusal tests, which are "only meaningful where the APIs are missing".
 - Without `pypdf` several test modules fail to import. Do not report such a run as a passing suite.
 
-Last full runs with the locked dependencies (local 0.6.4, uncommitted, 2026-10-09): Windows, Python 3.13.6 in a throwaway venv, 290 tests OK with 73 skipped; Linux, `python:3.12-slim-trixie` (Python 3.12.15), 290 tests OK with 2 skipped. The earlier `--network none` run was not repeated.
+Last full runs with the locked dependencies (local 0.6.5, uncommitted, 2026-10-09): Windows, Python 3.13.6 in a throwaway venv, 299 tests OK with 74 skipped; Linux, `python:3.12-slim-trixie` (Python 3.12.15), 299 tests OK with 2 skipped. The earlier `--network none` run was not repeated.
 
 ## Validating the app with the Möbius compiler
 

@@ -480,11 +480,88 @@ def file_name(path: str | None) -> str | None:
   return name or None
 
 
+TITLE_SCAN_LINES = 12
+TITLE_MAX_LINES = 3
+TITLE_MAX_CHARS = 200
+TITLE_LINE_MAX_CHARS = 150
+_TITLE_STOP_WORDS = frozenset(
+  "of for the a an in on to with and via using by from at as is are or vs versus through into over "
+  "under towards toward about without between".split()
+)
+_HEADER_LINE = re.compile(
+  r"^(arxiv\b|preprint|under review|published\b|proceedings|accepted\b|submitted\b|conference|journal\b|"
+  r"workshop|technical report|www\.|https?://|doi\b|©|copyright|\d+$|page \d|vol\.)", re.IGNORECASE,
+)
+_SECTION_LINE = re.compile(r"^(abstract|keywords?|index terms|summary|introduction|1\.? ?introduction)\b", re.IGNORECASE)
+_AFFILIATION = re.compile(
+  r"@|[*†‡§¶∗]|\b(university|universit[äée]|institute|laborator(y|ies)|labs?|department|school|college|"
+  r"corporation|inc\.?|research|google|microsoft|deepmind|openai|meta)\b", re.IGNORECASE,
+)
+
+
+def _is_name_like(line: str) -> bool:
+  """A line of capitalised words without small function words, as author lists are."""
+  words = [word for word in re.split(r"[\s,]+", line) if word]
+  return (
+    2 <= len(words) <= 12
+    and ":" not in line
+    and all(word[0].isupper() for word in words)
+    and not any(word.casefold() in _TITLE_STOP_WORDS for word in words)
+  )
+
+
+def _incomplete(title: str) -> bool:
+  """Whether a title so far ends where a phrase cannot end (a line wrap)."""
+  last = title.rstrip().rsplit(" ", 1)[-1]
+  return title.rstrip().endswith((":", "-", ",")) or last.casefold() in _TITLE_STOP_WORDS
+
+
+def first_page_title(first_page: str | None) -> str | None:
+  """The title printed at the top of page 1, or None when it cannot be told
+  with confidence. The title is the first lines before the first line that
+  looks like authors, an affiliation, an abstract or a blank line; it must be
+  followed by such a boundary within the first lines, so a title that runs
+  into running text is never guessed. The result is a label taken verbatim
+  from the stored page text, not a claim about the paper."""
+  lines = [" ".join(normalize_quote(line).split()) for line in (first_page or "").splitlines()[:TITLE_SCAN_LINES * 2]]
+  start = 0
+  while start < len(lines) and (not lines[start] or _HEADER_LINE.match(lines[start])):
+    start += 1
+  collected: list[str] = []
+  for line in lines[start:start + TITLE_SCAN_LINES]:
+    if not line:
+      if collected:
+        break
+      continue
+    if _SECTION_LINE.match(line) or _AFFILIATION.search(line):
+      break
+    if collected and _is_name_like(line) and not _incomplete(" ".join(collected)):
+      break
+    if _HEADER_LINE.match(line) or len(line) > TITLE_LINE_MAX_CHARS or len(collected) >= TITLE_MAX_LINES:
+      return None
+    collected.append(line)
+  else:
+    return None
+  title = " ".join(collected)
+  if (
+    not collected
+    or len(collected) > TITLE_MAX_LINES
+    or len(title) > TITLE_MAX_CHARS
+    or len(title.split()) < TITLE_MIN_WORDS + 1
+    or len(_letters(title)) < TITLE_MIN_LETTERS
+    or title.endswith(".")
+    or _incomplete(title)
+  ):
+    return None
+  return title
+
+
 def display_title(metadata_title: str | None, first_page: str | None, path: str | None) -> str | None:
-  """The name to show for a source: the PDF's embedded title only when its
-  words appear at the top of page 1 (PDF metadata is often wrong: a template
-  name, another paper, a word-processor file name), else the PDF file name.
-  Neither is evidence about the paper; this is a label."""
+  """The name to show for a source, from stored data only: the PDF's embedded
+  title when its words appear at the top of page 1 (PDF metadata is often
+  wrong: a template name, another paper, a word-processor file name), else the
+  title read from the top of page 1, else the PDF file name. A label, not
+  evidence about the paper."""
   title = " ".join(metadata_title.split()) if isinstance(metadata_title, str) else ""
   if (
     title
@@ -493,7 +570,7 @@ def display_title(metadata_title: str | None, first_page: str | None, path: str 
     and _letters(title) in _letters((first_page or "")[:TITLE_REGION_CHARS])
   ):
     return title
-  return file_name(path)
+  return first_page_title(first_page) or file_name(path)
 
 
 # Whole-project check.
