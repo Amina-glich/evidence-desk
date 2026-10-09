@@ -28,6 +28,16 @@ PAPER_B = (
   "Training the single model for image classification on the ImageNet training set takes 5.2 days "
   "of wall-clock training time on 8 NVIDIA V100 GPUs.\n",
 )
+TEN_CROP_QUOTE = "All accuracies use ten-crop 224 evaluation on the ImageNet validation set."
+PAPER_B_TEN = (
+  "Protocol: " + TEN_CROP_QUOTE + "\n",
+  PAPER_B[1], PAPER_B[2],
+)
+A_77_TEN = "A ten-crop run of the single model reaches 77.4% top-1 accuracy for image classification on the ImageNet validation set."
+PAPER_A_TEN = (
+  PAPER_A[0] + "Ten-crop protocol: " + TEN_CROP_QUOTE + "\n",
+  PAPER_A[1] + A_77_TEN + "\n", PAPER_A[2],
+)
 PAPER_C = (
   "Method. " + DEFINITION_QUOTE + "\n",
   "With a single model we obtain 75.5% top-1 accuracy for image classification on the ImageNet validation set.\n",
@@ -136,9 +146,10 @@ class PlotRulesTest(unittest.TestCase):
       ("S1", "Ensemble of 10", 78.1), ("S2", "Single model", 74.9),
     ])
     self.assertEqual([(row.chart, row.reason) for row in comparison.rows], [(1, None), (1, None)])
-    # Shared labels never include the variant, which belongs to each point.
-    self.assertEqual(chart.labels["metric_definition"], "Single-crop 224")
+    # Shared labels never include the setup labels, which belong to each point.
     self.assertNotIn("variant", chart.labels)
+    self.assertNotIn("metric_definition", chart.labels)
+    self.assertEqual([point.definition for point in chart.points], ["Single-crop 224", "Single-crop 224"])
 
   def test_p3_a_source_with_two_variants_gets_two_points_and_still_needs_a_second_source(self):
     ensemble = accuracy("78.1%", A_ENSEMBLE, variant={"label": "Ensemble of 10", "as_written": "ensemble of 10 models"})
@@ -162,19 +173,58 @@ class PlotRulesTest(unittest.TestCase):
       "dataset": {"dataset": {"label": "ImageNet-V2", "as_written": "ImageNet"}},
       "split": {"split": {"label": "test", "as_written": "validation set"}},
       "metric": {"metric": {"label": "Top-5 accuracy", "as_written": "top-1 accuracy"}},
-      "metric definition": {"metric_definition": {
-        "label": "Ten-crop 224", "as_written": "single-crop 224 evaluation", "page": 1, "quote": DEFINITION_QUOTE,
-      }},
     }
     for name, override in mismatches.items():
       with self.subTest(field=name):
         comparison = compare([s1, base(**override)])
         self.assertEqual(comparison.charts, [])
         self.assertIsNone(comparison.rows[0].chart)
-        self.assertIn(f"{name} differs" if name == "metric definition" else "no other source reports", comparison.rows[0].reason)
+        self.assertIn("no other source reports", comparison.rows[0].reason)
     # A different unit is a different quantity.
     points = {**accuracy("74.9", B_74), "unit": "points"}
     self.assertEqual(compare([s1, source("S2", PAPER_B, points)]).charts, [])
+
+  def test_p3_different_metric_definitions_are_plotted_with_their_own_labels(self):
+    ten_crop = {"label": "Ten-crop 224", "as_written": "ten-crop 224 evaluation", "page": 1, "quote": TEN_CROP_QUOTE}
+    s1 = source("S1", PAPER_A, accuracy("76.3%", A_76))
+    s2 = source("S2", PAPER_B_TEN, accuracy("74.9%", B_74, metric_definition=ten_crop))
+    comparison = compare([s1, s2])
+    (chart,) = comparison.charts
+    self.assertEqual([(point.source_id, point.definition, point.number) for point in chart.points], [
+      ("S1", "Single-crop 224", 76.3), ("S2", "Ten-crop 224", 74.9),
+    ])
+    self.assertNotIn("metric_definition", chart.labels)
+    self.assertEqual([row.chart for row in comparison.rows], [1, 1])
+
+  def test_p3_one_source_with_two_definitions_gets_two_points(self):
+    ten_crop = {"label": "Ten-crop 224", "as_written": "ten-crop 224 evaluation", "page": 1, "quote": TEN_CROP_QUOTE}
+    s1 = source("S1", PAPER_A_TEN, accuracy("76.3%", A_76), accuracy("77.4%", A_77_TEN, metric_definition=ten_crop))
+    (chart,) = compare([s1, source("S2", PAPER_B, accuracy("74.9%", B_74))]).charts
+    self.assertEqual([(point.source_id, point.definition) for point in chart.points], [
+      ("S1", "Single-crop 224"), ("S1", "Ten-crop 224"), ("S2", "Single-crop 224"),
+    ])
+
+  def test_p4_an_unknown_metric_definition_still_blocks_even_beside_a_different_known_one(self):
+    ten_crop = {"label": "Ten-crop 224", "as_written": "ten-crop 224 evaluation", "page": 1, "quote": TEN_CROP_QUOTE}
+    unknown = {"unknown": "The paper does not say how the image is cropped."}
+    s1 = source("S1", PAPER_A, accuracy("76.3%", A_76, metric_definition=unknown))
+    s2 = source("S2", PAPER_B_TEN, accuracy("74.9%", B_74, metric_definition=ten_crop))
+    comparison = compare([s1, s2])
+    self.assertEqual(comparison.charts, [])
+    self.assertIn("metric definition unknown", comparison.rows[0].reason)
+
+  def test_p5_conflicting_values_for_the_same_definition_and_variant_still_block(self):
+    s1 = source("S1", PAPER_A, accuracy("76.3%", A_76), accuracy("77.0%", A_77))
+    comparison = compare([s1, source("S2", PAPER_B, accuracy("74.9%", B_74))])
+    self.assertEqual(comparison.charts, [])
+    self.assertIn("conflicting values", comparison.rows[0].reason)
+
+  def test_p2_a_failed_quotation_still_blocks_even_when_setups_differ(self):
+    ten_crop = {"label": "Ten-crop 224", "as_written": "ten-crop 224 evaluation", "page": 1, "quote": TEN_CROP_QUOTE}
+    bad = accuracy("74.9%", "A single model gets 74.9% on something not in the paper.", metric_definition=ten_crop)
+    comparison = compare([source("S1", PAPER_A, accuracy("76.3%", A_76)), source("S2", PAPER_B_TEN, bad)])
+    self.assertEqual(comparison.charts, [])
+    self.assertIn("quotation did not verify", comparison.rows[1].reason)
 
   def test_p3_a_missing_crop_method_blocks_the_chart_even_when_the_variants_differ(self):
     # The reviewed case: one paper's crop method is not stated, the variants differ.

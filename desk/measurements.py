@@ -4,8 +4,10 @@ A measurement (``evidence.Measurement``) is a number as the source writes
 it, with its unit and compatibility fields: task, dataset, split, metric,
 metric definition and model variant, plus hardware for speed and training
 cost. Every field is backed by a verified quotation or explicitly unknown.
-The variant (model or training setup) labels a point; it does not have to
-match between points, but it must be stated and quote-backed.
+The metric definition and the model variant (model or training setup) label
+a point; they do not have to match between points, but each must be stated
+and quote-backed. Such a chart is descriptive: points with different
+evaluation setups are never ranked or presented as a head-to-head comparison.
 
 Checks on one measurement (problems in its evidence):
 
@@ -25,13 +27,14 @@ Rules for a plot (all must hold):
 - P1 at least two sources;
 - P2 every plotted value passes V1-V6;
 - P3 identical labels (case and spacing aside) for task, dataset, split,
-  metric, metric definition, the unit and the metric kind; hardware too for
-  speed and training cost. Model or training variants may differ: each
-  variant is its own labelled point, never merged or ranked;
-- P4 no compatibility field is unknown, the variant included: a missing field
-  is never inferred;
-- P5 a source that reports different values for one combination (variant
-  included) is never plotted for it. Conflicts are found among all of a source's measurements,
+  metric, the unit and the metric kind; hardware too for speed and training
+  cost. Metric definitions and model or training variants may differ: each
+  distinct (definition, variant) is its own point, labelled with both, never
+  merged or ranked;
+- P4 no compatibility field is unknown, the definition and the variant
+  included: a missing field is never inferred;
+- P5 a source that reports different values for one combination (definition
+  and variant included) is never plotted for it. Conflicts are found among all of a source's measurements,
   whatever their other problems, and an unknown field counts as possibly the
   same combination;
 - P6 a value involved in a contradiction recorded in the same source and
@@ -59,8 +62,8 @@ FIELD_NAMES = {
   "metric_definition": "metric definition", "variant": "model variant",
   HARDWARE_FIELD: "hardware",
 }
-# Evaluation details that must match for values to share a plot; the variant does not.
-PROTOCOL_FIELDS = ("metric_definition", HARDWARE_FIELD)
+# Evaluation details that must match for values to share a plot; the metric definition and the variant do not.
+PROTOCOL_FIELDS = (HARDWARE_FIELD,)
 
 _NUMBER = re.compile(r"^(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?(?:[eE][+-]?\d+)?%?$")
 _NUMBER_IN_TEXT = re.compile(r"(?<![\d.,])(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?(?:[eE][+-]?\d+)?")
@@ -119,11 +122,16 @@ class Point:
     """The model or training variant as the source's recorded label."""
     return self.assessed.measurement.fields["variant"].label
 
+  @property
+  def definition(self) -> str:
+    """The metric definition as the source's recorded label."""
+    return self.assessed.measurement.fields["metric_definition"].label
+
 
 @dataclass
 class Chart:
   number: int
-  # The shared labels (every compatibility field but the variant), from the first plotted measurement.
+  # The shared labels (every compatibility field but the metric definition and variant), from the first plotted measurement.
   labels: dict[str, str]
   unit: str
   metric_kind: str
@@ -277,17 +285,21 @@ def assess(report: SourceReport) -> list[Assessed]:
   return assessed
 
 
-VARIANT_POSITION = MEASUREMENT_FIELDS.index("variant")
+# Labels that describe how a value was obtained: they label a point instead of grouping.
+SETUP_FIELDS = ("metric_definition", "variant")
+_SETUP_POSITIONS = tuple(MEASUREMENT_FIELDS.index(name) for name in SETUP_FIELDS)
 
 
 def _key(item: Assessed) -> tuple:
-  """What values must share to be plotted together: everything but the variant."""
-  parts = item.parts[:VARIANT_POSITION] + item.parts[VARIANT_POSITION + 1:]
+  """What values must share to be plotted together: everything but the metric
+  definition and the variant."""
+  parts = tuple(part for position, part in enumerate(item.parts) if position not in _SETUP_POSITIONS)
   return (item.measurement.metric_kind, _label(item.measurement.unit), *parts)
 
 
-def _variant(item: Assessed) -> str | None:
-  return item.parts[VARIANT_POSITION]
+def _setup(item: Assessed) -> tuple:
+  """The normalized evaluation setup of a value: its metric definition and variant."""
+  return tuple(item.parts[position] for position in _SETUP_POSITIONS)
 
 
 def _benchmark(item: Assessed) -> tuple:
@@ -450,18 +462,18 @@ def compare(reports: list[SourceReport]) -> Comparison:
       first = members[0]
       chart = Chart(
         number=len(charts) + 1,
-        labels={name: first.measurement.fields[name].label for name in first.fields_to_check() if name != "variant"},
+        labels={name: first.measurement.fields[name].label for name in first.fields_to_check() if name not in SETUP_FIELDS},
         unit=first.measurement.unit,
         metric_kind=first.measurement.metric_kind,
       )
       for source_id, items in by_source.items():
-        # One point per source and variant. Identical values only within a
-        # variant: P5 removed every source with differing ones.
-        variants: dict[str | None, Assessed] = {}
+        # One point per source and evaluation setup. Identical values only
+        # within a setup: P5 removed every source with differing ones.
+        setups: dict[tuple, Assessed] = {}
         for item in items:
-          variants.setdefault(_variant(item), item)
+          setups.setdefault(_setup(item), item)
           rows[(item.source_id, item.index)].chart = chart.number
-        chart.points.extend(Point(source_id, item.number, item) for item in variants.values())
+        chart.points.extend(Point(source_id, item.number, item) for item in setups.values())
       charts.append(chart)
       continue
     for item in members:

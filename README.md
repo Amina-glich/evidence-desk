@@ -4,23 +4,25 @@ A Möbius Project app for comparing AI/ML research papers with source-grounded
 evidence: every extracted value points to a source, page and exact quote, and
 missing information is labelled “Not reported” instead of guessed.
 
-**Status: local code is preparation for 0.6.7; the hosted app is 0.6.6.** The app has a manifest, a launcher, a Project template
+**Status: the hosted app is 0.6.7; version 0.6.8 in this repository is not installed yet.** The app has a manifest, a launcher, a Project template
 with agent guidance, a service with seven agent tools — `project_status`,
 `add_source` (register an uploaded PDF and extract its page text with
 pypdf), `check_evidence` (deterministic quotation checking),
 `export_comparison` (comparison CSV and view), and arXiv discovery:
 `search_literature`, `lookup_reference` and `save_reference` — and a
 citation-linked **Evidence comparison** Creation. Version 0.4.1 was tested
-end to end in a hosted Möbius instance. The owner reports 0.6.6 installed
-there (it reads a source's title from its stored first-page text, skipping a
-recognized publisher permission, licence or copyright notice, and keeps the PDF
-file name as the fallback). The code in this repository is `0.6.7` in
-`mobius.json`: it lets results from different model or training variants share
-a chart as separately labelled points, with a plain warning that results from
-different papers and training setups are descriptive, not a controlled
-head-to-head ranking; every other evaluation detail must still match exactly.
-Nothing of 0.6.7 is committed, pushed or installed yet, so none of it has been
-exercised in the hosted instance. Features added after 0.4.1 were covered by the offline test suite; only what was exercised in
+end to end in a hosted Möbius instance. The owner reports 0.6.7 installed
+there: it reads a source's title from its stored first-page text (skipping a
+recognized publisher permission, licence or copyright notice, and keeping the
+PDF file name as the fallback) and lets different model or training variants
+share a chart as labelled points. The code in this repository is `0.6.8` in
+`mobius.json`: results whose metric
+definitions or model variants differ can share a descriptive chart, each point
+labelled with its own definition and variant, with a plain warning that results
+with different evaluation setups must not be ranked as a head-to-head
+comparison; task, dataset, split, metric and unit must still match exactly.
+Version 0.6.8 is not installed yet, so none of it has been exercised in the
+hosted instance. Features added after 0.4.1 were covered by the offline test suite; only what was exercised in
 the hosted instance counts as live-verified. Publisher-DOI lookup (Crossref) is
 not implemented yet.
 
@@ -53,12 +55,13 @@ Reported measurements lists every structured measurement (optional, in the
 evidence files) with its value, compatibility fields and a status: "Plotted
 in chart N" or the reason it was not compared. Each value and field links
 to the quotation that backs it. A dot plot is drawn only when at least two
-sources report the same task, dataset, split, metric and metric definition
+sources report the same task, dataset, split and metric with the same unit
 (and hardware for speed or training cost), every field backed by a verified
-quotation, nothing unknown (the model or training variant must be stated, but
-it may differ: each variant is its own labelled point, and the chart warns
-that results from different papers and training setups are descriptive, not a
-controlled head-to-head ranking), no source reporting conflicting
+quotation, nothing unknown (the metric definition and the model or training
+variant must be stated, but they may differ: each distinct pair labels its own
+point beside it, and the chart warns that results with different evaluation
+setups are descriptive and must not be ranked as a head-to-head comparison),
+no source reporting conflicting
 values for that combination (checked across all of its measurements, an
 unknown field counting as possibly the same), and no value taken from a
 contradiction recorded in the same source and dimension

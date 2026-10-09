@@ -13,7 +13,9 @@ from html.parser import HTMLParser
 from desk.viewer import NAV_SCRIPT, render_html
 from desk.vocabulary import DIMENSIONS
 from tests.reports import QUOTE_DATA, QUOTE_RESULT, REPORTED, report_for
-from tests.test_measurements import A_76, A_ENSEMBLE, B_74, PAPER_A, PAPER_B, accuracy, audit_reports, source
+from tests.test_measurements import (
+  A_76, A_ENSEMBLE, B_74, PAPER_A, PAPER_B, PAPER_B_TEN, TEN_CROP_QUOTE, accuracy, audit_reports, source,
+)
 
 
 class Page(HTMLParser):
@@ -466,7 +468,9 @@ class SourceNameTest(unittest.TestCase):
 
 
 class VariantChartViewTest(unittest.TestCase):
-  """Different model or training variants are separately labelled points, with a plain warning."""
+  """Different variants and metric definitions label their own points, with a plain warning."""
+
+  TEN_CROP = {"label": "Ten-crop 224", "as_written": "ten-crop 224 evaluation", "page": 1, "quote": TEN_CROP_QUOTE}
 
   def render(self, *reports):
     html = render_html(list(reports), research_question=None)
@@ -477,31 +481,51 @@ class VariantChartViewTest(unittest.TestCase):
     s2 = source("S2", PAPER_B, accuracy("74.9%", B_74, variant={"label": "Training recipe A1", "as_written": "single model"}))
     return s1, s2
 
+  def two_definitions(self):
+    s1 = source("S1", PAPER_A, accuracy("76.3%", A_76))
+    s2 = source("S2", PAPER_B_TEN, accuracy("74.9%", B_74, metric_definition=self.TEN_CROP))
+    return s1, s2
+
   def test_each_variant_is_labelled_on_its_point_and_the_warning_is_shown(self):
     html, page = self.render(*self.two_variants())
     self.assertIn("chart-1", page.ids)
     self.assertIn("1 chart of 2 measurements.", html)
-    for label in ("Distillation recipe", "Training recipe A1"):
-      self.assertIn(f">{label}</text>", html)
-    self.assertRegex(html, r"<title>S1 · Distillation recipe: 78.1% — open the quotation</title>")
-    self.assertRegex(html, r"<title>S2 · Training recipe A1: 74.9% — open the quotation</title>")
-    self.assertIn("Each point is labelled with its own model or training variant", html)
-    self.assertIn("descriptive, not a controlled head-to-head ranking", html)
+    self.assertIn("S1 · Distillation recipe</text>", html)
+    self.assertIn("S2 · Training recipe A1</text>", html)
+    self.assertIn("<title>S1 · Distillation recipe · Single-crop 224: 78.1% — open the quotation</title>", html)
+    self.assertIn("Each point is labelled with its own model or training variant and metric definition", html)
+    self.assertIn("Results with different evaluation setups are descriptive and must not be ranked as a head-to-head comparison", html)
     self.assertIn("values are not ranked", html)
-    self.assertNotIn("Shared: metric definition: Single-crop 224; model variant", html)
+    self.assertNotIn("These points use different metric definitions", html)
     for row in ("m-S1-1", "m-S2-1"):
       self.assertIn("Plotted in chart 1", page.text_by_id[row])
 
+  def test_different_metric_definitions_are_shown_beside_their_points_and_flagged(self):
+    html, page = self.render(*self.two_definitions())
+    self.assertIn("chart-1", page.ids)
+    self.assertIn(">Single-crop 224</text>", html)
+    self.assertIn(">Ten-crop 224</text>", html)
+    self.assertIn("<title>S2 · Single model · Ten-crop 224: 74.9% — open the quotation</title>", html)
+    self.assertIn("These points use different metric definitions, so they do not measure quite the same thing.", html)
+    self.assertIn("must not be ranked as a head-to-head comparison", html)
+    # The shared header never claims one metric definition for all points.
+    self.assertNotIn("Shared: metric definition", html)
+    # The table keeps each definition with its own quotation.
+    self.assertIn("Single-crop 224", page.text_by_id["m-S1-1"])
+    self.assertIn("Ten-crop 224", page.text_by_id["m-S2-1"])
+    self.assertNotIn("Ten-crop 224", page.text_by_id["m-S1-1"])
+
   def test_points_still_link_to_their_verified_quotations(self):
-    _html, page = self.render(*self.two_variants())
-    points = [target for target, text in page.links if "open the quotation" in text]
-    self.assertEqual(len(points), 2)
-    for target, value in zip(points, ("78.1%", "74.9%")):
-      self.assertIn(value, page.text_by_id[target])
-      self.assertIn("verified", page.text_by_id[target])
+    for reports, values in ((self.two_variants(), ("78.1%", "74.9%")), (self.two_definitions(), ("76.3%", "74.9%"))):
+      _html, page = self.render(*reports)
+      points = [target for target, text in page.links if "open the quotation" in text]
+      self.assertEqual(len(points), 2)
+      for target, value in zip(points, values):
+        self.assertIn(value, page.text_by_id[target])
+        self.assertIn("verified", page.text_by_id[target])
 
   def test_an_unrecorded_crop_method_still_blocks_the_chart_and_says_so(self):
-    s1, s2 = self.two_variants()
+    s1, _s2 = self.two_variants()
     unknown = {"unknown": "The paper does not say how the image is cropped for this result."}
     s2 = source("S2", PAPER_B, accuracy("74.9%", B_74, metric_definition=unknown, variant={"label": "Training recipe A1", "as_written": "single model"}))
     html, page = self.render(s1, s2)
@@ -509,3 +533,11 @@ class VariantChartViewTest(unittest.TestCase):
     self.assertIn("No values are plotted.", html)
     self.assertIn("metric definition unknown (The paper does not say how the image is cropped for this result)", page.text_by_id["m-S2-1"])
     self.assertIn("never fills it in", page.text_by_id["m-S2-1"])
+
+  def test_setup_labels_are_escaped(self):
+    hostile = '<img src=x onerror=alert(1)>'
+    s1, s2 = self.two_definitions()
+    s2 = source("S2", PAPER_B_TEN, accuracy("74.9%", B_74, metric_definition={**self.TEN_CROP, "label": hostile}))
+    html, _page = self.render(s1, s2)
+    self.assertNotIn(hostile, html)
+    self.assertIn("&lt;img", html)
