@@ -4,7 +4,7 @@ A Möbius Project app for comparing AI/ML research papers with source-grounded
 evidence: every extracted value points to a source, page and exact quote, and
 missing information is labelled “Not reported” instead of guessed.
 
-**Status: the hosted Möbius app is 0.6.11 (installation confirmed in the Möbius chat); 0.6.12 in this repository is local, uncommitted and not installed.** The app has a manifest, a launcher, a Project template
+**Status: the hosted Möbius app is 0.6.12, installed from commit `0029d28` (confirmed in the Möbius chat); 0.6.13 in this repository is the next update and is not installed.** The app has a manifest, a launcher, a Project template
 with agent guidance, a service with seven agent tools — `project_status`,
 `add_source` (register an uploaded PDF and extract its page text with
 pypdf), `check_evidence` (deterministic quotation checking),
@@ -33,12 +33,14 @@ no way to delete a project, so there is still no Delete button). Version 0.6.11
 (installed) redesigned the launcher as a dashboard (comparisons first, with a
 prominent New comparison action and project cards; the numbered workflow
 collapsed under "How it works"; a subtle theme-based background). Version
-0.6.12 in this repository is local, uncommitted and not installed: it removes
-the launcher's "Quick prompts" section, which duplicated the prompt actions
+0.6.12 (commit `0029d28`, installed) removed the launcher's "Quick prompts" section, which duplicated the prompt actions
 that the Paper comparison project template already offers once a project is
 open (those template actions are unchanged), and adds one short sentence above
-the project cards: open a project to continue your paper review. None of
-0.6.9 to 0.6.12 has been separately verified from this repository. Features added after 0.4.1 were covered by the offline test suite; only what was exercised in
+the project cards: open a project to continue your paper review. Version
+0.6.13 in this repository is not installed yet: it removes
+the "Suggested:" prefix 0.6.12 had added to three project action names, keeping
+the optional-draft explanation in the project guidance. None of 0.6.9 to 0.6.13
+has been separately verified from this repository. Features added after 0.4.1 were covered by the offline test suite; only what was exercised in
 the hosted instance counts as live-verified. Publisher-DOI lookup (Crossref) is
 not implemented yet.
 
@@ -157,18 +159,20 @@ rather than act on the wrong project.
 The launcher cannot call the app's tools: they run only for the agent in a
 project chat. The Paper comparison template therefore offers its prompts as
 Project template actions, buttons on a project's page that open a new chat
-with an editable draft for you to review before sending: **Suggested: Find
-papers**, **Suggested: Register PDFs and check evidence** and **Suggested:
-Export and review**, together with **Check project setup** and **Plan a
-comparison**. The project guidance says these are optional suggested prompts.
-A project snapshots its template when it is created, so only projects created
-from 0.6.1 have the buttons, and the new names reach new projects only. The
+with an editable draft for you to review before sending: **Find papers**,
+**Register PDFs and check evidence** and **Export and review**, together with
+**Check project setup** and **Plan a comparison**. The project guidance says
+the buttons are optional suggested prompts and that clicking one opens an
+editable draft to review before sending. A project snapshots its template when
+it is created, so only projects created from 0.6.1 have the buttons, and name
+or guidance changes reach new projects only. The
 launcher has no prompts of its own (its Quick prompts section was removed in
 0.6.12). Möbius renders a template action as a plain button showing only its
 `name` (`ProjectWorkspace.jsx`); the manifest contract defines only `id`,
-`name` and `prompt` for an action and no style, colour or icon property, so the
-"Suggested:" prefix is how these buttons are marked as optional, with no CSS
-workaround. `tests/test_manifest.py` checks the actions and that no prompt
+`name` and `prompt` for an action and no style, colour or icon property, so
+these Möbius-owned buttons are not styled and there is no CSS workaround (0.6.12
+marked them with a "Suggested:" prefix; 0.6.13 removed it and relies on the
+guidance sentence). `tests/test_manifest.py` checks the actions and that no prompt
 weakens an evidence rule.
 
 ## Adding papers and understanding the project files

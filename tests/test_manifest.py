@@ -533,7 +533,7 @@ class LauncherLayoutTest(unittest.TestCase):
 
 
 class SuggestedActionsTest(unittest.TestCase):
-  """Möbius offers actions no style or accent property, so the names mark them as optional suggestions."""
+  """Möbius offers actions no style or accent property: plain names, and the guidance explains they are optional."""
 
   # SHA-256 (first 16 hex digits) of each action prompt as installed before the rename: the prompts must not change.
   PROMPT_DIGESTS = {
@@ -548,14 +548,16 @@ class SuggestedActionsTest(unittest.TestCase):
     self.template = template(load_manifest())
     self.actions = {action["id"]: action for action in self.template["actions"]}
 
-  def test_the_three_workflow_actions_are_named_as_optional_suggestions(self):
-    self.assertEqual(self.actions["find-papers"]["name"], "Suggested: Find papers")
-    self.assertEqual(self.actions["register-and-check"]["name"], "Suggested: Register PDFs and check evidence")
-    self.assertEqual(self.actions["export-review"]["name"], "Suggested: Export and review")
-    # The other actions keep their names, and only the three above carry the prefix.
+  def test_the_three_workflow_actions_have_plain_names_without_a_prefix(self):
+    self.assertEqual(self.actions["find-papers"]["name"], "Find papers")
+    self.assertEqual(self.actions["register-and-check"]["name"], "Register PDFs and check evidence")
+    self.assertEqual(self.actions["export-review"]["name"], "Export and review")
+    # The other actions keep their names, and no action name carries a label or marker prefix.
     self.assertEqual(self.actions["check-setup"]["name"], "Check project setup")
     self.assertEqual(self.actions["plan"]["name"], "Plan a comparison")
-    self.assertEqual([i for i, a in self.actions.items() if a["name"].startswith("Suggested: ")], ["find-papers", "register-and-check", "export-review"])
+    for action in self.actions.values():
+      self.assertNotIn("Suggested", action["name"])
+      self.assertNotIn(":", action["name"])
 
   def test_action_ids_order_and_prompts_are_unchanged(self):
     import hashlib
@@ -570,7 +572,7 @@ class SuggestedActionsTest(unittest.TestCase):
       self.assertEqual(set(action), {"id", "name", "prompt"})
       self.assertLessEqual(len(action["name"]), 60)
     index = (REPO_ROOT / "index.jsx").read_text(encoding="utf-8")
-    self.assertNotIn("Suggested", index)  # the launcher has no copy of the actions
+    self.assertNotIn("Suggested", index)  # the launcher has no copy of the actions and no Suggested label
 
   def test_the_guidance_says_the_prompts_are_optional_and_open_an_editable_draft(self):
     flat = " ".join(self.template["guidance"].split())
