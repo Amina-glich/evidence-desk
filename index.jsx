@@ -3,15 +3,12 @@
  * The home screen lists your comparisons and starts new ones. Each comparison
  * is its own folder in this app's storage (workspaces/<id>/) with its own
  * papers, its own embedded chat (chat_<id>.json) and its own results, so
- * nothing is shared between comparisons. The list of names is comparisons.json.
- * Möbius Projects are separate from comparisons: the quiet "Manage Projects"
- * button opens the Möbius Projects directory, where old Projects are deleted.
+ * nothing is shared between comparisons. The list of names is comparisons.json. Deleting a comparison (comparisons.js)
+ * removes only its own folder and chat link.
  */
 import { useCallback, useEffect, useState } from 'react'
 import Comparison from './workspace.jsx'
-
-const REGISTRY = 'comparisons.json'
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
+import { REGISTRY, loadComparisons, deleteComparison } from './comparisons.js'
 
 // Möbius theme variables only, so the page follows the owner's light or dark theme.
 const CSS = `
@@ -45,36 +42,20 @@ const CSS = `
 .ed-row-name { display: block; font-weight: 600; overflow-wrap: anywhere; }
 .ed-row-date { display: block; margin-top: 2px; font-size: 12px; color: var(--muted); }
 .ed-card .ed-btn { width: 100%; }
+.ed-btn--quiet { min-height: 36px; font-size: 13px; color: var(--muted); }
+.ed-btn--danger { border-color: var(--danger); background: var(--danger); color: #fff; font-weight: 600; white-space: normal; }
+.ed-confirm { display: grid; gap: 8px; padding: 10px; border: 1px solid var(--danger); border-radius: 10px; font-size: 13px; }
+.ed-confirm-actions { display: grid; gap: 8px; }
 .ed-state { margin: 14px 18px 18px; padding: 18px; border: 1px dashed var(--border); border-radius: 12px; text-align: center; color: var(--muted); }
 .ed-alert { padding: 10px 18px 0; color: var(--danger); }
-.ed-manage { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 16px; margin-top: 28px; padding-top: 14px; border-top: 1px solid var(--border); }
-.ed-manage-text { flex: 1 1 260px; min-width: 0; }
-.ed-manage h2 { font-size: 13px; color: var(--muted); }
-.ed-manage p { margin-top: 2px; font-size: 13px; color: var(--muted); }
 @media (max-width: 560px) { .ed-list { grid-template-columns: minmax(0, 1fr); } }
-@media (max-width: 480px) { .ed-form .ed-btn, .ed-manage .ed-btn { flex: 1 1 100%; } }
+@media (max-width: 480px) { .ed-form .ed-btn { flex: 1 1 100%; } }
 `
 
 function formatDate(value) {
   if (!value) return ''
   const date = new Date(value)
   return Number.isNaN(date.getTime()) ? '' : date.toLocaleDateString()
-}
-
-// The saved list, or [] for a new app. An older single workspace (workspace.json)
-// becomes the first comparison so nothing already added is lost.
-async function loadComparisons(storage) {
-  const saved = await storage.get(REGISTRY)
-  if (saved && Array.isArray(saved.comparisons)) {
-    return saved.comparisons.filter(row => UUID.test(row?.id || ''))
-  }
-  const legacy = await storage.get('workspace.json')
-  if (legacy && UUID.test(legacy.id || '')) {
-    const rows = [{ id: legacy.id, name: 'First comparison', created: new Date().toISOString() }]
-    await storage.set(REGISTRY, { comparisons: rows })
-    return rows
-  }
-  return []
 }
 
 export default function App() {
@@ -85,7 +66,10 @@ export default function App() {
   const [name, setName] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
-  const [manageError, setManageError] = useState('')
+  // The comparison awaiting delete confirmation, and the one being deleted.
+  const [confirmId, setConfirmId] = useState(null)
+  const [deletingId, setDeletingId] = useState(null)
+  const [deleteError, setDeleteError] = useState('')
 
   const load = useCallback(async () => {
     if (!storage) return
@@ -120,13 +104,17 @@ export default function App() {
     }
   }
 
-  // Apps cannot delete Projects; Möbius does that itself, after asking to confirm.
-  async function manageProjects() {
-    setManageError('')
+  // Deletes only this comparison's own files and list entry (see comparisons.js).
+  async function confirmDelete(row) {
+    setDeletingId(row.id)
+    setDeleteError('')
     try {
-      await window.mobius.projects.browse()
+      setComparisons(await deleteComparison(storage, row.id))
+      setConfirmId(null)
     } catch (cause) {
-      setManageError(cause?.message || 'Could not open Möbius Projects.')
+      setDeleteError(`Could not delete “${row.name || 'Untitled comparison'}”: ${cause?.message || 'unknown error'}`)
+    } finally {
+      setDeletingId(null)
     }
   }
 
@@ -197,17 +185,23 @@ export default function App() {
             {formatDate(row.created) && <span className="ed-row-date">Started {formatDate(row.created)}</span>}
           </span>
           <button type="button" className="ed-btn" onClick={() => setOpenId(row.id)}>Open comparison</button>
+          {confirmId === row.id
+            ? <div className="ed-confirm" role="alertdialog" aria-label={`Delete ${row.name || 'Untitled comparison'}`}>
+                <p><strong>Delete “{row.name || 'Untitled comparison'}”?</strong></p>
+                <p>This permanently removes this comparison’s papers, results and saved chat link. Your other comparisons and Möbius Projects are not touched. Its chat conversation stays in your Möbius chat list; delete it there if you want it gone.</p>
+                <div className="ed-confirm-actions">
+                  <button type="button" className="ed-btn ed-btn--danger" disabled={deletingId === row.id} onClick={() => confirmDelete(row)}>
+                    {deletingId === row.id ? 'Deleting…' : `Delete “${row.name || 'Untitled comparison'}”`}
+                  </button>
+                  <button type="button" className="ed-btn" disabled={deletingId === row.id} onClick={() => setConfirmId(null)}>Cancel</button>
+                </div>
+              </div>
+            : <button type="button" className="ed-btn ed-btn--quiet" disabled={deletingId !== null}
+                aria-label={`Delete comparison ${row.name || 'Untitled comparison'}`}
+                onClick={() => { setDeleteError(''); setConfirmId(row.id) }}>Delete comparison</button>}
         </li>)}
       </ul>}
+      {deleteError && <p role="alert" className="ed-alert">{deleteError}</p>}
     </section>
-
-    <section className="ed-manage" aria-labelledby="manage-title">
-      <div className="ed-manage-text">
-        <h2 id="manage-title">Manage Projects</h2>
-        <p>Older Möbius Projects are separate from these comparisons. Delete them in Möbius Projects, which asks you to confirm.</p>
-      </div>
-      <button type="button" className="ed-btn" onClick={manageProjects}>Manage Projects</button>
-    </section>
-    {manageError && <p role="alert" className="ed-alert" style={{ padding: '8px 0 0' }}>{manageError}</p>}
   </main></div>
 }

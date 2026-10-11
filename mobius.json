@@ -1,8 +1,30 @@
 {
   "id": "evidence-desk",
   "name": "Evidence Desk",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "description": "Compare AI/ML research papers with findings traced to a source, page and exact quotation.",
+  "icon": "icon.png",
+  "store": {
+    "tagline": "Research comparisons grounded in page-level evidence.",
+    "description": "Compare research papers with findings tied to their sources. Evidence Desk helps an AI agent organize findings across research tasks, datasets, experiments, results, runtime and limitations. Each finding links to a paper page and an exact quotation that can be checked against the registered PDF text. The comparison records contradictions and distinguishes information a paper does not report from information that has not yet been assessed. Review the research summary and citation-linked comparison, then copy the outputs for your own use.",
+    "screenshots": [
+      {
+        "src": "static/store/screenshot-1-comparisons.png",
+        "label": "Your comparisons",
+        "alt": "Evidence Desk home screen listing two comparisons, each with Open comparison and Delete comparison buttons, and a field to start a new comparison."
+      },
+      {
+        "src": "static/store/screenshot-2-add-papers.png",
+        "label": "Add papers",
+        "alt": "A comparison page with an Add PDFs button, two attached paper PDFs and a Copy request button for running the analysis."
+      },
+      {
+        "src": "static/store/screenshot-3-evidence-comparison.png",
+        "label": "Read the evidence",
+        "alt": "The Evidence comparison view with a research question, an evidence-matrix note, quotation-verified counts per paper and a status overview of Reported, Not reported and Not assessed."
+      }
+    ]
+  },
   "entry": "index.jsx",
   "offline_capable": false,
   "permissions": {},
@@ -15,6 +37,7 @@
   "source_files": [
     "service.py",
     "workspace.jsx",
+    "comparisons.js",
     "build.sh",
     "build_view.py",
     "requirements.lock",

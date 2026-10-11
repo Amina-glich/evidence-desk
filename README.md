@@ -4,7 +4,7 @@ A Möbius Project app for comparing AI/ML research papers with source-grounded
 evidence: every extracted value points to a source, page and exact quote, and
 missing information is labelled “Not reported” instead of guessed.
 
-**Status: version 0.7.0 on branch `feature/in-app-flow` adds the in-app comparison workflow described next; it is not installed in the hosted instance (app 10 stays 0.6.12) and has been exercised only in a temporary test app. The hosted Möbius app is 0.6.12, installed from commit `0029d28` (confirmed in the Möbius chat); 0.6.13 in this repository is the next update and is not installed.** The app has a manifest, a launcher, a Project template
+**Status: version 0.8.0 adds deleting a single comparison and the App Store listing metadata (icon, tagline, description) to the in-app comparison workflow from 0.7.0, which is merged to `main` and installed as app 10. The older Möbius Project workflow and its Paper comparison template remain available from Möbius Projects.** The app has a manifest, a launcher, a Project template
 with agent guidance, a service with seven agent tools — `project_status`,
 `add_source` (register an uploaded PDF and extract its page text with
 pypdf), `check_evidence` (deterministic quotation checking),
@@ -26,10 +26,7 @@ Metrics and reported results as a finding and the other five dimensions Not
 assessed, gets a short measurement overview instead of a mostly empty
 six-dimension matrix (any status, note, absence or contradiction elsewhere
 keeps the full matrix); the
-Overview shows the text of a note instead of the bare word "note". Version
-0.6.10 (installed) moved the launcher's project-deletion guidance into its own
-quiet "Manage projects" section below the comparisons card (Möbius gives apps
-no way to delete a project, so there is still no Delete button). Version 0.6.11
+Overview shows the text of a note instead of the bare word "note". Version 0.6.11
 (installed) redesigned the launcher as a dashboard (comparisons first, with a
 prominent New comparison action and project cards; the numbered workflow
 collapsed under "How it works"; a subtle theme-based background). Version
@@ -44,13 +41,12 @@ has been separately verified from this repository. Features added after 0.4.1 we
 the hosted instance counts as live-verified. Publisher-DOI lookup (Crossref) is
 not implemented yet.
 
-## In-app comparisons (0.7.0)
+## In-app comparisons (0.7.0, delete added in 0.8.0)
 
 The app is a self-contained screen; no Möbius Project is needed.
 
 1. **Home screen.** Lists your comparisons and starts new ones (optional name, then
-   *New comparison*). A quiet *Manage Projects* button opens the Möbius Projects
-   directory, where old Möbius Projects are deleted (apps cannot delete them).
+   *New comparison*). Each comparison card has its own *Delete comparison* button.
 2. **Each comparison** is its own folder in the app's storage
    (`workspaces/<id>/`) with its own papers (`inbox/`), embedded chat and results.
    Nothing is shared between comparisons. The list is `comparisons.json`; an older
@@ -75,6 +71,11 @@ fails closed on ambiguity. Unverified live: the file picker and the
 srcDoc comparison view in the real app frame beyond the smoke test; no
 screenshots were taken. The Project template (Möbius Projects) still works; the
 sections below that mention the launcher describe the 0.6.x Project workflow.
+
+
+### Deleting a comparison
+
+Each comparison card has a **Delete comparison** button. It asks you to confirm, naming the comparison, then removes only that comparison's papers, results and saved chat link (`workspaces/<id>/` and `chat_<id>.json`) and its entry in the list. Other comparisons and Möbius Projects are not touched. Limits of the app storage API: the comparison's chat conversation stays in your Möbius chat list (apps cannot delete chats), and empty folders may remain.
 
 ## Literature discovery and the reference library
 
@@ -140,7 +141,8 @@ the exported file.
 | Path | Role |
 |---|---|
 | `mobius.json` | App manifest: service, agent tool, skill, and the **Paper comparison** project template. |
-| `index.jsx` | Home screen: lists comparisons (`comparisons.json`), creates new ones and has the quiet *Manage Projects* button (`window.mobius.projects.browse()`; no Delete, which Möbius does not offer apps). Uses only `window.mobius.storage` and `projects.browse()`. |
+| `index.jsx` | Home screen: lists comparisons, creates new ones and has a *Delete comparison* button on each card (with a confirmation naming it). Uses only `window.mobius.storage`. |
+| `comparisons.js` | The comparison list and `deleteComparison`: removes only one comparison's folder, chat link and list entry. Tested with a fake storage in `tests/js/`. |
 | `workspace.jsx` | One comparison: Add PDFs, the embedded chat, *Copy request*, the comparison view, the rendered summary and the copy-export buttons. |
 | `service.py` | Service entry the platform runs once per request (`json-v1`). Delegates to `desk.service`. |
 | `build.sh`, `build_view.py` | Project builder of the Evidence comparison Creation. Runs on the platform's Python (no pypdf), with the same file safety and scope rules as the export. |
@@ -239,14 +241,7 @@ The **Changes** indicator with its line counts in the file pane belongs to
 Möbius (its project file list), not to Evidence Desk, and the app cannot hide
 it. Evidence Desk neither renders nor can change it.
 
-**Deleting a comparison.** Möbius gives apps only `list`, `templates`,
-`create`, `open` and `browse` for projects (`window.mobius.projects`; read
-from `../mobius/frontend/src/lib/appProjectControl.js` and
-`runtime/projects.js`); there is no supported way for an app to delete a
-project. The launcher therefore has no Delete button and uses no workaround
-(no file paths, database or undocumented endpoints). It explains that a
-project is deleted from the Projects directory in Möbius, which has its own
-confirmation, and offers an **Open Möbius Projects** button (`browse()`).
+**Deleting a comparison.** Each comparison card has its own *Delete comparison* button (see above). The app uses only its own storage; it has no Projects button and no link to the Möbius Projects directory.
 
 ## Verifying Project binding in Möbius
 
