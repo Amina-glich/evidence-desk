@@ -4,7 +4,7 @@ A Möbius Project app for comparing AI/ML research papers with source-grounded
 evidence: every extracted value points to a source, page and exact quote, and
 missing information is labelled “Not reported” instead of guessed.
 
-**Status: the hosted Möbius app is 0.6.12, installed from commit `0029d28` (confirmed in the Möbius chat); 0.6.13 in this repository is the next update and is not installed.** The app has a manifest, a launcher, a Project template
+**Status: version 0.7.0 on branch `feature/in-app-flow` adds the in-app comparison workflow described next; it is not installed in the hosted instance (app 10 stays 0.6.12) and has been exercised only in a temporary test app. The hosted Möbius app is 0.6.12, installed from commit `0029d28` (confirmed in the Möbius chat); 0.6.13 in this repository is the next update and is not installed.** The app has a manifest, a launcher, a Project template
 with agent guidance, a service with seven agent tools — `project_status`,
 `add_source` (register an uploaded PDF and extract its page text with
 pypdf), `check_evidence` (deterministic quotation checking),
@@ -43,6 +43,38 @@ the optional-draft explanation in the project guidance. None of 0.6.9 to 0.6.13
 has been separately verified from this repository. Features added after 0.4.1 were covered by the offline test suite; only what was exercised in
 the hosted instance counts as live-verified. Publisher-DOI lookup (Crossref) is
 not implemented yet.
+
+## In-app comparisons (0.7.0)
+
+The app is a self-contained screen; no Möbius Project is needed.
+
+1. **Home screen.** Lists your comparisons and starts new ones (optional name, then
+   *New comparison*). A quiet *Manage Projects* button opens the Möbius Projects
+   directory, where old Möbius Projects are deleted (apps cannot delete them).
+2. **Each comparison** is its own folder in the app's storage
+   (`workspaces/<id>/`) with its own papers (`inbox/`), embedded chat and results.
+   Nothing is shared between comparisons. The list is `comparisons.json`; an older
+   single `workspace.json` is imported as "First comparison".
+3. **Add papers.** *Add PDFs* stores PDFs (up to 25 MiB each) in the comparison's `inbox/`.
+4. **Run the analysis.** *Copy request*, paste it into the embedded chat and send.
+   (No frame API sends a chat message for you.) The chat is saved as
+   `chat_<id>.json`, which is how the service binds the chat to its comparison.
+5. **Read the comparison.** The citation-linked comparison view, and the research
+   summary with its Markdown headings rendered, appear after the analysis; *Refresh results* reloads them.
+6. **Copy exports.** Möbius gives mini-app frames no download API (the frame
+   sandbox does not allow downloads), so there are no Download buttons. *Copy
+   summary (Markdown)*, *Copy comparison (HTML)* and *Copy comparison (CSV)* put the
+   export on the clipboard to paste into a file you save yourself.
+
+The layout is a centred column up to about 1000 px that shrinks on tablets and
+phones and stacks sections when narrow. All evidence safeguards are unchanged
+(page-level citations, exact quotation checks, "not reported" versus "not
+assessed", recorded contradictions, chart rules). The service binds a workspace
+chat from `chats.created_by_app_id` and the `chat_<id>.json` file, and still
+fails closed on ambiguity. Unverified live: the file picker and the
+srcDoc comparison view in the real app frame beyond the smoke test; no
+screenshots were taken. The Project template (Möbius Projects) still works; the
+sections below that mention the launcher describe the 0.6.x Project workflow.
 
 ## Literature discovery and the reference library
 
@@ -108,7 +140,8 @@ the exported file.
 | Path | Role |
 |---|---|
 | `mobius.json` | App manifest: service, agent tool, skill, and the **Paper comparison** project template. |
-| `index.jsx` | Launcher: create, list and open this app's projects through `window.mobius.projects` (and open the Möbius Projects directory with `browse()`; there is no Delete, which Möbius does not offer apps); a collapsed "How it works" guide with instructions for uploading PDFs to `inbox/` (no upload control: see below) and a collapsed explanation of the project files. It has no prompts of its own (the Paper comparison template offers them inside a project), uses no clipboard API, runs no tools and reads no project files. |
+| `index.jsx` | Home screen: lists comparisons (`comparisons.json`), creates new ones and has the quiet *Manage Projects* button (`window.mobius.projects.browse()`; no Delete, which Möbius does not offer apps). Uses only `window.mobius.storage` and `projects.browse()`. |
+| `workspace.jsx` | One comparison: Add PDFs, the embedded chat, *Copy request*, the comparison view, the rendered summary and the copy-export buttons. |
 | `service.py` | Service entry the platform runs once per request (`json-v1`). Delegates to `desk.service`. |
 | `build.sh`, `build_view.py` | Project builder of the Evidence comparison Creation. Runs on the platform's Python (no pypdf), with the same file safety and scope rules as the export. |
 | `requirements.in`, `requirements.lock` | The service's Python dependency (pypdf), hash-pinned; Möbius builds the app's own environment from the lock (`"python": {"lock": ...}`). |

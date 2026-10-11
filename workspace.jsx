@@ -10,7 +10,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 
 const MAX_PDF_BYTES = 25 * 1024 * 1024 // storage.setBlob limit
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 
 export const ANALYSIS_PROMPT = [
   'Compare the papers in this workspace.',
@@ -22,30 +21,100 @@ export const ANALYSIS_PROMPT = [
 ].join(' ')
 
 const CSS = `
-.edw { margin-top: 22px; border: 1px solid var(--border); border-radius: 14px; background: var(--surface); overflow: hidden; }
+.edw { width: 100%; max-width: 1000px; margin: 22px auto 0; border: 1px solid var(--border); border-radius: 14px; background: var(--surface); overflow: hidden; }
 .edw-head { padding: 16px 18px 0; }
+.edw-block, .edw-head { min-width: 0; }
+.edw-head { padding: 18px 18px 0; }
+@media (min-width: 900px) { .edw-block, .edw-head { padding-left: 28px; padding-right: 28px; } .edw-md { font-size: 14px; } }
+@media (max-width: 560px) { .edw { border-radius: 10px; } .edw-block, .edw-head { padding-left: 14px; padding-right: 14px; } .edw-actions .edw-btn, .edw-drop .edw-btn { flex: 1 1 100%; justify-content: center; } }
+.edw-back { min-height: 36px; margin-bottom: 10px; color: var(--muted); }
 .edw-head h2 { margin: 0; font-size: 17px; font-weight: 600; }
 .edw-sub { margin: 4px 0 0; color: var(--muted); font-size: 13px; }
-.edw-block { margin: 14px 18px 0; }
-.edw-block:last-child { margin-bottom: 18px; }
-.edw-step { display: flex; align-items: center; gap: 8px; margin: 0 0 8px; font-size: 14px; font-weight: 600; }
+.edw-block { margin: 0; padding: 18px; }
+.edw-block + .edw-block, .edw-head + .edw-block { border-top: 1px solid var(--border); margin-top: 16px; }
+.edw-block:last-child { padding-bottom: 20px; }
+.edw-step { display: flex; align-items: center; gap: 8px; margin: 0 0 10px; font-size: 14px; font-weight: 600; }
 .edw-step b { display: grid; place-items: center; width: 20px; height: 20px; border-radius: 50%; background: var(--accent-dim); font-size: 12px; }
-.edw-drop { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 12px; border: 1px dashed var(--border); border-radius: 12px; background: var(--bg); }
+.edw-drop { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; max-width: 100%; }
 .edw-btn { min-height: 44px; padding: 0 14px; border-radius: 8px; border: 1px solid var(--border); background: transparent; color: var(--text); font: inherit; cursor: pointer; }
 .edw-btn:hover:not(:disabled) { background: var(--surface-2); }
 .edw-btn:disabled { opacity: 0.55; cursor: default; }
 .edw-btn--primary { border-color: var(--accent); background: var(--accent); color: var(--accent-fg); font-weight: 600; }
 .edw-btn--primary:hover:not(:disabled) { background: var(--accent-hover); }
-.edw-papers { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 6px; }
-.edw-papers li { padding: 8px 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); overflow-wrap: anywhere; }
+.edw-papers { list-style: none; margin: 8px 0 0; padding: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
+.edw-papers li { max-width: 100%; padding: 4px 10px; border: 1px solid var(--border); border-radius: 999px; background: var(--bg); font-size: 13px; overflow-wrap: anywhere; }
 .edw-msg { margin: 8px 0 0; font-size: 13px; color: var(--muted); }
 .edw-err { margin: 8px 0 0; font-size: 13px; color: var(--danger); }
-.edw-prompt { margin: 0 0 8px; padding: 10px 12px; border-left: 2px solid var(--border); font-size: 13px; color: var(--muted); white-space: pre-wrap; overflow-wrap: anywhere; }
-.edw-chat { height: 440px; border: 1px solid var(--border); border-radius: 12px; overflow: hidden; background: var(--bg); }
-.edw-view { width: 100%; height: 560px; border: 1px solid var(--border); border-radius: 12px; background: #fff; }
-.edw-text { margin: 0; padding: 12px; max-height: 360px; overflow: auto; border: 1px solid var(--border); border-radius: 12px; background: var(--bg); font-size: 13px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.edw-explain { margin: 0 0 10px; font-size: 13px; color: var(--muted); }
+.edw-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin-bottom: 12px; }
+.edw-chat { height: clamp(240px, 34vh, 340px); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; background: var(--bg); }
+.edw-view { display: block; width: 100%; height: clamp(420px, 72vh, 760px); margin-top: 12px; border: 1px solid var(--border); border-radius: 12px; background: #fff; }
+.edw-text { margin: 0; padding: 14px 16px; max-height: min(70vh, 640px); overflow: auto; border: 1px solid var(--border); border-radius: 12px; background: var(--bg); font-size: 13px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.edw-md { white-space: normal; line-height: 1.5; }
+.edw-md h2, .edw-md h3, .edw-md h4 { margin: 14px 0 6px; font-weight: 650; }
+.edw-md h2 { font-size: 18px; } .edw-md h3 { font-size: 15px; } .edw-md h4 { font-size: 14px; }
+.edw-md > :first-child { margin-top: 0; }
+.edw-md p { margin: 0 0 8px; } .edw-md ul, .edw-md ol { margin: 0 0 8px; padding-left: 20px; }
+.edw-md code { padding: 1px 4px; border-radius: 4px; background: var(--surface-2); }
 .edw-links { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
 `
+
+
+// A small, safe Markdown renderer for the research summary: headings, lists,
+// paragraphs, **bold**, `code`. Builds React elements only (no raw HTML), and
+// hides HTML comments such as the agent's writing guide.
+function inline(text, key) {
+  const parts = []
+  const pattern = /(\*\*[^*]+\*\*|`[^`]+`)/g
+  let last = 0, match, n = 0
+  while ((match = pattern.exec(text))) {
+    if (match.index > last) parts.push(text.slice(last, match.index))
+    const token = match[0]
+    parts.push(token.startsWith('**')
+      ? <strong key={`${key}-${n++}`}>{token.slice(2, -2)}</strong>
+      : <code key={`${key}-${n++}`}>{token.slice(1, -1)}</code>)
+    last = match.index + token.length
+  }
+  if (last < text.length) parts.push(text.slice(last))
+  return parts
+}
+
+export function renderMarkdown(source) {
+  const lines = String(source).replace(/<!--[\s\S]*?-->/g, '').split(/\r?\n/)
+  const out = []
+  let paragraph = [], list = null
+  const flushParagraph = () => {
+    if (paragraph.length) out.push(<p key={`p${out.length}`}>{inline(paragraph.join(' '), `p${out.length}`)}</p>)
+    paragraph = []
+  }
+  const flushList = () => {
+    if (list) {
+      const Tag = list.ordered ? 'ol' : 'ul'
+      out.push(<Tag key={`l${out.length}`}>{list.items.map((item, i) => <li key={i}>{inline(item, `l${out.length}-${i}`)}</li>)}</Tag>)
+    }
+    list = null
+  }
+  for (const line of lines) {
+    const heading = /^(#{1,6})\s+(.*?)\s*#*\s*$/.exec(line)
+    const item = /^\s*(?:([-*+])|(\d+)[.)])\s+(.*)$/.exec(line)
+    if (heading) {
+      flushParagraph(); flushList()
+      const Tag = `h${Math.min(heading[1].length + 1, 6)}`
+      out.push(<Tag key={`h${out.length}`}>{inline(heading[2], `h${out.length}`)}</Tag>)
+    } else if (item) {
+      flushParagraph()
+      const ordered = Boolean(item[2])
+      if (!list || list.ordered !== ordered) { flushList(); list = { ordered, items: [] } }
+      list.items.push(item[3])
+    } else if (!line.trim()) {
+      flushParagraph(); flushList()
+    } else {
+      flushList(); paragraph.push(line.trim())
+    }
+  }
+  flushParagraph(); flushList()
+  return out
+}
 
 function baseName(entry) {
   const raw = typeof entry === 'string' ? entry : (entry?.path || entry?.name || '')
@@ -58,9 +127,8 @@ function safePdfName(name) {
   return `${stem || 'paper'}.pdf`
 }
 
-export default function Workspace() {
+export default function Comparison({ id: wid, name, onBack }) {
   const storage = window.mobius?.storage
-  const [wid, setWid] = useState(null)
   const [papers, setPapers] = useState([])
   const [synthesis, setSynthesis] = useState(null)
   const [viewHtml, setViewHtml] = useState(null)
@@ -69,27 +137,8 @@ export default function Workspace() {
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
   const [copied, setCopied] = useState(false)
+  const [copiedExport, setCopiedExport] = useState('')
   const mountRef = useRef(null)
-
-  // One workspace per app: its id is created once and kept in storage.
-  useEffect(() => {
-    if (!storage) return
-    let live = true
-    ;(async () => {
-      try {
-        let saved = await storage.get('workspace.json')
-        if (!saved || !UUID.test(saved.id || '')) {
-          saved = { id: crypto.randomUUID() }
-          await storage.set('workspace.json', saved)
-        }
-        await storage.setText(`workspaces/${saved.id}/README.md`, 'Evidence Desk workspace. Papers go in inbox/; Evidence Desk fills in the rest.\n')
-        if (live) setWid(saved.id)
-      } catch (cause) {
-        if (live) setError(cause?.message || 'Could not open the workspace.')
-      }
-    })()
-    return () => { live = false }
-  }, [storage])
 
   const refresh = useCallback(async () => {
     if (!storage || !wid) return
@@ -152,13 +201,30 @@ export default function Workspace() {
     } catch { setError('Could not copy; select the request text and copy it by hand.') }
   }
 
+  // Mini-app frames have no download API, so exports are copied as text to paste into a file.
+  async function copyExport(key, text) {
+    try {
+      await window.mobius.clipboard.writeText(text)
+      setCopiedExport(key)
+      setError('')
+    } catch { setError('Could not copy this export.') }
+  }
+  async function copyCsv() {
+    try {
+      const text = await storage.getText(`workspaces/${wid}/exports/comparison.csv`)
+      if (text == null) throw new Error('missing')
+      await copyExport('csv', text)
+    } catch { setError('Could not read the CSV export. Refresh the results and try again.') }
+  }
+
   if (!storage) return null
 
   return <section className="edw" aria-labelledby="edw-title">
     <style>{CSS}</style>
     <div className="edw-head">
-      <h2 id="edw-title">Workspace</h2>
-      <p className="edw-sub">Add papers, ask for the analysis and read the comparison here. No Project needed.</p>
+      <button type="button" className="edw-btn edw-back" onClick={onBack}>← All comparisons</button>
+      <h2 id="edw-title">{name}</h2>
+      <p className="edw-sub">Add papers, ask for the analysis and read the comparison here. Each comparison keeps its own papers, chat and results.</p>
     </div>
 
     <div className="edw-block">
@@ -166,7 +232,7 @@ export default function Workspace() {
       <div className="edw-drop">
         <label className="edw-btn edw-btn--primary" style={{ display: 'inline-flex', alignItems: 'center' }}>
           {busy ? 'Adding…' : 'Add PDFs'}
-          <input type="file" accept="application/pdf,.pdf" multiple disabled={busy || !wid} onChange={addFiles} className="edw-sr" style={{ position: 'absolute', width: 1, height: 1, opacity: 0 }} />
+          <input type="file" accept="application/pdf,.pdf" multiple disabled={busy} onChange={addFiles} style={{ position: 'absolute', width: 1, height: 1, opacity: 0 }} />
         </label>
         <span className="edw-msg" style={{ margin: 0 }}>PDFs up to 25 MiB each.</span>
       </div>
@@ -177,9 +243,11 @@ export default function Workspace() {
 
     <div className="edw-block">
       <h3 className="edw-step"><b aria-hidden="true">2</b>Run the analysis</h3>
-      <p className="edw-prompt">{ANALYSIS_PROMPT}</p>
-      <button type="button" className="edw-btn" onClick={copyPrompt}>{copied ? 'Copied: paste it into the chat' : 'Copy request'}</button>
-      <p className="edw-msg">Paste the request into the chat below and send it. The agent checks every quotation against the page text; nothing is shown as a finding until it passes.</p>
+      <p className="edw-explain">Ask the assistant to read your papers and compare them. Every finding is tied to a page and an exact quotation, and anything a paper does not say is marked as such.</p>
+      <div className="edw-actions">
+        <button type="button" className="edw-btn" onClick={copyPrompt}>{copied ? 'Copied' : 'Copy request'}</button>
+        <span className="edw-msg" style={{ margin: 0 }}>{copied ? 'Now paste it into the chat below and send.' : 'Copy, then paste it into the chat below and send.'}</span>
+      </div>
       <div className="edw-chat" ref={mountRef} />
     </div>
 
@@ -188,8 +256,16 @@ export default function Workspace() {
       <button type="button" className="edw-btn" onClick={refresh}>Refresh results</button>
       {viewHtml == null && synthesis == null && <p className="edw-msg">Nothing yet. Results appear after the analysis finishes.</p>}
       {viewHtml != null && <iframe className="edw-view" title="Comparison view" sandbox="allow-scripts" srcDoc={viewHtml} />}
-      {synthesis != null && <><h3 className="edw-step" style={{ marginTop: 12 }}>Research summary</h3><pre className="edw-text">{synthesis}</pre></>}
-      {csvReady && <p className="edw-msg">A CSV export is saved as exports/comparison.csv in this workspace.</p>}
+      {synthesis != null && <><h3 className="edw-step" style={{ marginTop: 12 }}>Research summary</h3><div className="edw-text edw-md">{renderMarkdown(synthesis)}</div></>}
+      {(synthesis != null || viewHtml != null || csvReady) && <div className="edw-exports">
+        <h3 className="edw-step" style={{ marginTop: 12 }}>Copy exports</h3>
+        <p className="edw-msg">Mini-apps cannot download files, so copy an export and paste it into a file you save yourself (for example summary.md, comparison.html, comparison.csv).</p>
+        <div className="edw-actions">
+          {synthesis != null && <button type="button" className="edw-btn" onClick={() => copyExport('summary', synthesis)}>{copiedExport === 'summary' ? 'Copied summary' : 'Copy summary (Markdown)'}</button>}
+          {viewHtml != null && <button type="button" className="edw-btn" onClick={() => copyExport('html', viewHtml)}>{copiedExport === 'html' ? 'Copied HTML' : 'Copy comparison (HTML)'}</button>}
+          {csvReady && <button type="button" className="edw-btn" onClick={copyCsv}>{copiedExport === 'csv' ? 'Copied CSV' : 'Copy comparison (CSV)'}</button>}
+        </div>
+      </div>}
     </div>
   </section>
 }
