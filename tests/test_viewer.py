@@ -673,7 +673,8 @@ class ShellOwnedChangesIndicatorTest(unittest.TestCase):
 
   def test_neither_the_launcher_nor_the_view_renders_it(self):
     from pathlib import Path
-    launcher = (Path(__file__).resolve().parent.parent / "index.jsx").read_text(encoding="utf-8")
+    root = Path(__file__).resolve().parent.parent
+    launcher = "".join((root / name).read_text(encoding="utf-8") for name in ("index.jsx", "workspace.jsx"))
     html = render_html(two_sources(), research_question=None)
     for text in (launcher, html):
       self.assertNotRegex(text, r"Changes\s*[+−-]\s*\d")

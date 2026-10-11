@@ -649,3 +649,32 @@ class WorkflowTest(unittest.TestCase):
 
 if __name__ == "__main__":
   unittest.main()
+
+
+@unittest.skipUnless(POSIX, SKIP_REASON)
+class WorkspaceWorkflowTest(WorkflowTest):
+  """The whole workflow again, with an in-app workspace in place of a Project.
+
+  Every safeguard (page-level citations, exact quotation checks, statuses,
+  contradictions, plot rules, export) must behave identically there.
+  """
+
+  def setUp(self):
+    self.platform = Platform()
+    self.addCleanup(self.platform.close)
+    self.project_id, self.chat = self.platform.add_workspace(starter=True)
+    self.root = self.platform.workspace_root(self.project_id)
+    (self.root / "inbox" / "paper.pdf").write_bytes(paper_pdf())
+
+  # The creation-time builder and its script build a Möbius Project folder;
+  # a workspace exports through export_comparison instead.
+  test_build_script_runs_end_to_end = None
+  test_creation_builder_matches_the_exported_view = None
+  test_creation_builder_never_follows_symlinks_out_of_the_project = None
+  test_creation_builder_refuses_like_the_export = None
+  test_creation_builder_writes_nothing_into_the_project = None
+
+  def test_status_names_the_workspace_kind(self):
+    body = self.call("project_status")
+    self.assertEqual((body["kind"], body["bound_through"]), ("workspace", "workspace chat"))
+    self.assertEqual(body["inbox_pdfs"], 1)

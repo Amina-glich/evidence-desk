@@ -60,6 +60,50 @@ class BindingTest(unittest.TestCase):
     chat_id = self.platform.add_chat()
     self.assertRefused("not_project_chat", {"chat_id": chat_id})
 
+  def test_app_chat_binds_to_its_workspace(self):
+    workspace_id, chat_id = self.platform.add_workspace()
+    bound = bind_call({"chat_id": chat_id}, self.platform.env())
+    self.assertEqual(bound.kind, "workspace")
+    self.assertEqual(bound.project_id, workspace_id)
+    self.assertEqual(bound.project_chat_id, chat_id)
+    self.assertEqual(bound.app_storage_dir, self.platform.app_storage)
+
+  def test_helper_of_an_app_chat_binds_to_the_same_workspace(self):
+    workspace_id, chat_id = self.platform.add_workspace()
+    helper = self.platform.add_chat()
+    self.platform.add_delegation(chat_id, helper)
+    bound = bind_call({"chat_id": helper}, self.platform.env())
+    self.assertEqual((bound.kind, bound.project_id), ("workspace", workspace_id))
+    self.assertEqual((bound.chat_id, bound.project_chat_id), (helper, chat_id))
+
+  def test_two_workspaces_never_share_files(self):
+    first, first_chat = self.platform.add_workspace()
+    second, second_chat = self.platform.add_workspace()
+    self.assertEqual(bind_call({"chat_id": first_chat}, self.platform.env()).project_id, first)
+    self.assertEqual(bind_call({"chat_id": second_chat}, self.platform.env()).project_id, second)
+
+  def test_app_chat_without_a_saved_workspace_is_refused(self):
+    _, chat_id = self.platform.add_workspace(link_chat=False)
+    self.assertRefused("workspace_not_found", {"chat_id": chat_id})
+
+  def test_chat_id_claimed_by_two_workspaces_is_refused(self):
+    _, chat_id = self.platform.add_workspace()
+    (self.platform.app_storage / f"chat_{new_id()}.json").write_text(
+      '{"id": "%s"}' % chat_id, encoding="utf-8",
+    )
+    self.assertRefused("workspace_not_found", {"chat_id": chat_id})
+
+  def test_another_apps_chat_is_not_a_workspace(self):
+    chat_id = self.platform.add_chat(created_by_app_id=OTHER_APP_ID)
+    (self.platform.app_storage / f"chat_{new_id()}.json").write_text(
+      '{"id": "%s"}' % chat_id, encoding="utf-8",
+    )
+    self.assertRefused("not_project_chat", {"chat_id": chat_id})
+
+  def test_deleted_app_chat_is_refused(self):
+    chat_id = self.platform.add_chat(created_by_app_id=1, deleted=True)
+    self.assertRefused("chat_deleted", {"chat_id": chat_id})
+
   def test_helper_of_a_non_project_chat_is_refused(self):
     parent = self.platform.add_chat()
     helper = self.platform.add_chat()
@@ -154,13 +198,29 @@ class BindingTest(unittest.TestCase):
   def test_changed_platform_schema_fails_closed(self):
     other = Platform(schema="""
       CREATE TABLE chats (id VARCHAR(64) PRIMARY KEY, project_id VARCHAR(64),
-                          deleted_at DATETIME);
+                          deleted_at DATETIME, created_by_app_id INTEGER);
       CREATE TABLE delegations (parent_chat_id VARCHAR(64), child_chat_id VARCHAR(64));
       CREATE TABLE projects (id VARCHAR(64) PRIMARY KEY, name VARCHAR(256),
                              root_path VARCHAR(1024), deleted_at DATETIME);
     """)
     self.addCleanup(other.close)
     chat_id = other.add_chat()
+    with self.assertRaises(DeskError) as caught:
+      bind_call({"chat_id": chat_id}, other.env())
+    self.assertEqual(caught.exception.code, "platform_schema_changed")
+
+  def test_platform_without_app_chat_ownership_fails_closed(self):
+    other = Platform(schema="""
+      CREATE TABLE chats (id VARCHAR(64) PRIMARY KEY, project_id VARCHAR(64),
+                          deleted_at DATETIME);
+      CREATE TABLE delegations (parent_chat_id VARCHAR(64), child_chat_id VARCHAR(64));
+      CREATE TABLE projects (id VARCHAR(64) PRIMARY KEY, name VARCHAR(256),
+                             root_path VARCHAR(1024), source_app_id INTEGER,
+                             deleted_at DATETIME);
+    """)
+    self.addCleanup(other.close)
+    chat_id = new_id()
+    other.writer.execute("INSERT INTO chats (id) VALUES (?)", (chat_id,))
     with self.assertRaises(DeskError) as caught:
       bind_call({"chat_id": chat_id}, other.env())
     self.assertEqual(caught.exception.code, "platform_schema_changed")

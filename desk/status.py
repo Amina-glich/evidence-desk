@@ -124,8 +124,12 @@ def project_status(binding: ProjectBinding, _arguments: dict) -> dict:
   ]
   return {
     "project": {"id": binding.project_id, "name": binding.project_name},
+    "kind": binding.kind,
+    # Where a workspace's files are: the agent edits evidence/ and synthesis.md here.
+    **({"path": f"{binding.app_storage_dir}/workspaces/{binding.project_id}"} if binding.kind == "workspace" else {}),
     "bound_through": (
-      "project chat" if binding.chat_id == binding.project_chat_id else "helper chat"
+      ("workspace chat" if binding.kind == "workspace" else "project chat")
+      if binding.chat_id == binding.project_chat_id else "helper chat"
     ),
     "data_format": SCHEMA_VERSION,
     "areas": areas,

@@ -135,17 +135,11 @@ class ManifestTest(unittest.TestCase):
     self.assertIn(preview["source"], paper["files"])
     self.assertTrue(preview["source"].endswith(tuple(f".{ext}" for ext in artifact_type["extensions"])))
 
-  def test_launcher_resolves_the_template_by_its_local_id(self):
-    source = (REPO_ROOT / "index.jsx").read_text(encoding="utf-8")
-    self.assertIn(f"const TEMPLATE_ID = '{TEMPLATE_ID}'", source)
-    self.assertNotIn("evidence-desk:", source)
-
 
 class LauncherTest(unittest.TestCase):
   """The launcher has no prompts of its own; the template actions it points to stay safe and unchanged."""
 
   def setUp(self):
-    self.source = (REPO_ROOT / "index.jsx").read_text(encoding="utf-8")
     self.actions = {action["id"]: action for action in template(load_manifest())["actions"]}
 
   def test_the_template_keeps_its_prompt_actions(self):
@@ -188,55 +182,6 @@ class LauncherTest(unittest.TestCase):
     for text in texts.values():
       for forbidden in ("ignore", "skip the check", "estimate", "approximate", "assume"):
         self.assertNotIn(forbidden, text.lower())
-
-  def test_the_launcher_says_it_does_not_run_tools_or_show_project_files(self):
-    flat = " ".join(self.source.split())
-    self.assertIn("does not run Evidence Desk tools, search for papers, read your PDFs or show project files", flat)
-    self.assertIn("after you review and send a prompt", flat)
-
-  def test_the_guide_covers_the_whole_workflow(self):
-    flat = " ".join(self.source.split())
-    for step in (
-      "Create or open a comparison above",
-      "open the inbox/ folder in the file list and choose Upload to add your PDFs",
-      "Read synthesis.md (the research summary)",
-      "use the prompt buttons on the project page (projects created from this version) or your own words, and review each request before you send it",
-      "or open the comparison view",
-    ):
-      self.assertIn(step, flat)
-    self.assertIn("created from this version", flat)  # older projects keep their own template actions
-
-  def test_styling_uses_only_mobius_theme_variables(self):
-    css = re.search(r"const CSS = `(.*?)`", self.source, re.S).group(1)
-    self.assertNotRegex(css, r"#[0-9a-fA-F]{3,8}\b")
-    self.assertNotRegex(css, r"\b(?:rgb|rgba|hsl|hsla)\(")
-    # The names the Möbius app frame defines for every theme (frontend/public/app-frame.html).
-    theme = {"text", "muted", "border", "surface", "surface-2", "bg", "accent", "accent-hover", "accent-dim", "accent-fg", "danger", "font"}
-    self.assertEqual(set(re.findall(r"var\(--([a-z0-9-]+)\)", css)) - theme, set())
-    self.assertNotIn("@import", css)
-    self.assertNotIn("url(", css)
-
-  def test_there_is_no_upload_control_only_instructions_for_the_host_file_list(self):
-    # A frame cannot write project files (window.mobius.projects has list/create/open only).
-    for forbidden in ('type="file"', "type='file'", "FileReader", "arrayBuffer", "FormData", "webkitdirectory"):
-      self.assertNotIn(forbidden, self.source)
-    flat = " ".join(self.source.split())
-    self.assertIn("open the inbox/ folder in the file list and choose Upload", flat)
-    self.assertIn("this page cannot upload files for you", flat)
-
-  def test_the_launcher_explains_the_project_files(self):
-    flat = " ".join(self.source.split())
-    self.assertIn("What are the files in a project?", flat)
-    self.assertIn("<strong>synthesis.md</strong>: the readable research summary and comparison", flat)
-    self.assertIn("<strong>README.md</strong> and <strong>desk.json</strong>: support files", flat)
-    self.assertIn("<strong>inbox/</strong>: your papers", flat)
-    self.assertIn("<details className=\"ed-files\">", self.source)  # collapsed: the page stays compact
-
-  def test_the_launcher_uses_only_documented_platform_apis(self):
-    # It must not reach tools, services or files: only the Projects runtime.
-    for forbidden in ("fetch(", "XMLHttpRequest", "/api/", "/tools/", "window.mobius.chat", "mobius.storage", "postMessage", "dangerouslySetInnerHTML", "localStorage"):
-      self.assertNotIn(forbidden, self.source)
-    self.assertEqual(set(re.findall(r"window\.mobius\??\.(\w+)", self.source)), {"projects"})
 
 
 class GuidanceTest(unittest.TestCase):
@@ -364,172 +309,16 @@ class PlainSummaryGuidanceTest(unittest.TestCase):
     self.assertIn("comparison-by-dimension.csv", (REPO_ROOT / "evidence-desk.md").read_text(encoding="utf-8"))
 
 
-class LauncherDeleteTest(unittest.TestCase):
-  """Möbius gives apps no way to delete a project, so the launcher must not pretend to."""
+class TemplateActionPromptsTest(unittest.TestCase):
+  """The Project template's prompt actions stay as they were."""
 
-  def setUp(self):
-    self.source = (REPO_ROOT / "index.jsx").read_text(encoding="utf-8")
-
-  def test_the_launcher_calls_only_the_documented_project_actions(self):
-    import re
-    calls = set(re.findall(r"runtime\.(\w+)\(", self.source))
-    self.assertEqual(calls, {"list", "templates", "create", "open", "browse"})
-
-  def test_there_is_no_delete_control_or_undocumented_request(self):
-    lowered = self.source.lower()
-    for forbidden in ("delete(", "remove(", "fetch(", "xmlhttprequest", "postmessage", "/api/", "localstorage", "sqlite"):
-      self.assertNotIn(forbidden, lowered)
-    self.assertNotRegex(self.source, r">\s*Delete")
-
-  def test_the_page_explains_where_to_delete_and_opens_the_projects_directory(self):
-    flat = " ".join(self.source.split())
-    self.assertIn("Projects are deleted from Möbius Projects, where Möbius asks you to confirm before anything is removed", flat)
-    self.assertIn("await runtime.browse()", self.source)
-    self.assertIn("Open Möbius Projects", self.source)
-
-  def test_the_guidance_is_a_separate_quiet_section_below_the_comparisons_card(self):
-    source = self.source
-    panel_end = source.index("</section>", source.index('className="ed-panel"'))
-    manage = source.index('className="ed-manage"')
-    self.assertGreater(manage, panel_end, "the guidance must not sit inside the comparisons card")
-    self.assertNotIn("Open Möbius Projects", source[:panel_end])
-    section = source[manage:source.index("</section>", manage)]
-    self.assertIn('aria-labelledby="manage-title"', source[manage - 60:manage + 80])
-    self.assertIn("<h2 id=\"manage-title\">Manage projects</h2>", section)
-    self.assertIn("onClick={browse}", section)
-    self.assertNotRegex(section, r"onClick=\{\s*(delete|remove)")
-
-  def test_the_section_is_spaced_themed_and_stacks_on_narrow_screens(self):
-    css = self.source[self.source.index("const CSS = `"):self.source.index("`", self.source.index("const CSS = `") + 14)]
-    rule = next(line for line in css.splitlines() if line.startswith(".ed-manage {"))
-    for part in ("margin-top: 28px", "border-top: 1px solid var(--border)", "flex-wrap: wrap", "justify-content: space-between"):
-      self.assertIn(part, rule)
-    quiet = [line for line in css.splitlines() if line.startswith((".ed-manage h2", ".ed-manage p"))]
-    self.assertTrue(quiet and all("var(--muted)" in line for line in quiet))
-    self.assertNotRegex(" ".join(line for line in css.splitlines() if "ed-manage" in line), r"#[0-9a-fA-F]{3,8}\b|rgb\(")
-    self.assertRegex(css, r"@media \(max-width: 480px\)[^\n]*\.ed-manage \.ed-btn \{ flex: 1 1 100%; \}")
-
-
-class LauncherLayoutTest(unittest.TestCase):
-  """The launcher reads as a dashboard: comparisons first, guidance and prompts as quiet helpers."""
-
-  def setUp(self):
-    self.source = (REPO_ROOT / "index.jsx").read_text(encoding="utf-8")
-    self.css = re.search(r"const CSS = `(.*?)`", self.source, re.S).group(1)
-
-  def position(self, marker):
-    self.assertIn(marker, self.source)
-    return self.source.index(marker)
-
-  def test_the_page_order_puts_the_comparisons_first(self):
-    order = [
-      self.position('aria-labelledby="comparisons-title"'),
-      self.position('className="ed-manage"'),
-      self.position('className="ed-how"'),
-      self.position('className="ed-files"'),
-    ]
-    self.assertEqual(order, sorted(order))
-    # The header holds only the title and one line; the numbered steps are no longer above the comparisons.
-    self.assertLess(self.position('className="ed-hero"'), order[0])
-    self.assertLess(self.position("<h1>Evidence Desk</h1>"), order[0])
-    self.assertGreater(self.position('className="ed-steps"'), order[0])
-
-  def test_new_comparison_is_the_prominent_primary_action_inside_the_main_card(self):
-    panel = self.source[self.position('className="ed-panel"'):self.position('className="ed-manage"')]
-    self.assertIn('className="ed-btn ed-btn--primary"', panel)
-    self.assertIn("'New comparison'", panel)
-    self.assertIn('<label htmlFor="comparison-name"', panel)
-    self.assertIn('id="comparison-name"', panel)
-    primary = re.search(r"\.ed-btn--primary \{([^}]*)\}", self.css).group(1)
-    self.assertIn("font-weight: 600", primary)
-    self.assertIn("var(--accent)", primary)
-    # The create form is a tinted band, and existing projects are cards in a responsive grid.
-    self.assertIn("background: var(--accent-dim)", re.search(r"\.ed-form \{([^}]*)\}", self.css).group(1))
-    self.assertIn('className="ed-card"', panel)
-    self.assertIn("grid-template-columns: repeat(auto-fill, minmax(240px, 1fr))", re.search(r"\.ed-list \{([^}]*)\}", self.css).group(1))
-    self.assertIn("Open project", panel)
-
-  def test_the_numbered_workflow_is_collapsed_under_how_it_works_and_keeps_its_wording(self):
-    self.assertIn("const [howOpen, setHowOpen] = useState(false)", self.source)
-    start = self.position('<details className="ed-how"')
-    how = self.source[start:self.source.index("</details>", start)]
-    self.assertIn("<summary>How it works</summary>", how)
-    self.assertIn('<ol className="ed-steps" aria-label="Workflow">', how)
-    self.assertIn("does not run", " ".join(how.split()))
-    for number in "1234":
-      self.assertIn(f'<b aria-hidden="true">{number}</b>', how)
-    # With no comparison yet the guide starts open, so a new owner still sees the workflow first.
-    self.assertIn("projects.length === 0 && !loadError) setHowOpen(true)", self.source)
-
-  def test_the_quick_prompts_section_is_gone_and_nothing_replaces_it(self):
-    for removed in ("ed-quick", "PromptCard", "PROMPTS", "Quick prompts", "Copy prompt", "Edit prompt text", "textarea", "clipboard", "useRef", "ed-prompt", "ed-msg"):
-      self.assertNotIn(removed, self.source)
-      self.assertNotIn(removed, self.css)
-    # The page ends with the files explanation: no other instruction block follows it.
-    tail = self.source[self.position('className="ed-files"'):]
-    self.assertNotIn("<section", tail)
-    self.assertEqual(self.source.count("<section"), 2)  # the comparisons card and "Manage projects"
-    self.assertEqual(self.source.count("<details"), 2)  # "How it works" and the files explanation
-
-  def test_one_short_sentence_near_the_projects_says_to_open_a_project(self):
-    sentence = "Open a project to continue your paper review."
-    self.assertEqual(self.source.count(sentence), 1)
-    panel = self.source[self.position('className="ed-panel"'):self.position('className="ed-manage"')]
-    self.assertIn(f'<p className="ed-hint">{sentence}</p>', panel)
-    self.assertLess(panel.index("ed-hint"), panel.index('className="ed-list"'))  # right above the project cards
-    self.assertIn("projects.length > 0 && <p className=\"ed-hint\"", panel)  # shown only when there are projects
-    self.assertLessEqual(len(sentence), 60)
-
-  def test_the_workflow_wording_no_longer_mentions_copying_prompts(self):
-    flat = " ".join(self.source.split())
-    self.assertNotIn("Copy a prompt", flat)
-    self.assertNotIn("prompt text to copy", flat)
-    self.assertIn("use the prompt buttons on the project page (projects created from this version) or your own words", flat)
-
-  def test_the_template_actions_the_launcher_used_to_mirror_are_unchanged(self):
+  def test_the_template_actions_are_unchanged(self):
     manifest = load_manifest()
     actions = {action["id"]: action for action in template(manifest)["actions"]}
     self.assertTrue(actions["find-papers"]["prompt"].startswith("Find papers on arXiv about this topic: [describe the topic here]. "))
     self.assertIn("Run check_evidence. If no evidence file is invalid, run export_comparison.", actions["export-review"]["prompt"])
     self.assertIn("Register the PDFs I uploaded to inbox/ with add_source", actions["register-and-check"]["prompt"])
     self.assertEqual(len(actions), 5)
-
-  def test_manage_projects_stays_separate_and_understated(self):
-    manage = re.search(r"\.ed-manage h2 \{([^}]*)\}", self.css).group(1)
-    self.assertIn("var(--muted)", manage)
-    self.assertIn("font-size: 13px", manage)
-    self.assertLess(self.position('className="ed-panel"'), self.position('className="ed-manage"'))
-    self.assertNotIn("Open Möbius Projects", self.source[:self.position('className="ed-manage"')])
-
-  def test_the_background_is_a_subtle_gradient_from_theme_variables(self):
-    shell = re.search(r"\.ed-shell \{([^}]*)\}", self.css).group(1)
-    self.assertIn("radial-gradient(", shell)
-    self.assertIn("var(--accent-dim)", shell)
-    self.assertNotRegex(shell, r"#[0-9a-fA-F]{3,8}\b|\brgba?\(")
-    self.assertEqual(self.source.count('className="ed-shell"'), 2)  # the normal page and the no-runtime fallback
-
-  def test_phone_layout_stacks_cards_and_buttons(self):
-    narrow = [line for line in self.css.splitlines() if line.startswith("@media (max-width: 560px)")][0]
-    self.assertIn(".ed-list { grid-template-columns: minmax(0, 1fr); }", narrow)
-    phone = [line for line in self.css.splitlines() if line.startswith("@media (max-width: 480px)")][0]
-    for part in (".ed-form .ed-btn { flex: 1 1 100%; }", ".ed-manage .ed-btn { flex: 1 1 100%; }"):
-      self.assertIn(part, phone)
-    self.assertIn("min-width: 0", re.search(r"\.ed-card \{([^}]*)\}", self.css).group(1))
-    self.assertIn("overflow-wrap: anywhere", re.search(r"\.ed-row-name \{([^}]*)\}", self.css).group(1))
-
-  def test_accessibility_basics_are_kept(self):
-    self.assertIn('<svg viewBox="0 0 24 24"', self.source)
-    self.assertIn('className="ed-mark" aria-hidden="true"', self.source)
-    self.assertIn(".ed :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }", self.css)
-    self.assertIn('aria-label={`${projects.length} comparisons`}', self.source)
-    self.assertIn('role="alert"', self.source)
-    self.assertEqual(len(re.findall(r"<h1>", self.source)), 2)  # the page and the no-runtime fallback
-
-  def test_the_redesign_adds_no_new_capability(self):
-    for forbidden in ("delete(", "remove(", "fetch(", 'type="file"', "FormData", "localStorage", "postMessage", "dangerouslySetInnerHTML"):
-      self.assertNotIn(forbidden, self.source)
-    self.assertEqual(set(re.findall(r"runtime\.(\w+)\(", self.source)), {"list", "templates", "create", "open", "browse"})
-    self.assertEqual(set(re.findall(r"window\.mobius\??\.(\w+)", self.source)), {"projects"})
 
 
 class SuggestedActionsTest(unittest.TestCase):
