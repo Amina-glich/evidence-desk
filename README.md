@@ -4,7 +4,7 @@ A Möbius Project app for comparing AI/ML research papers with source-grounded
 evidence: every extracted value points to a source, page and exact quote, and
 missing information is labelled “Not reported” instead of guessed.
 
-**Status: version 0.8.0 adds deleting a single comparison and the App Store listing metadata (icon, tagline, description) to the in-app comparison workflow from 0.7.0, which is merged to `main` and installed as app 10. The older Möbius Project workflow and its Paper comparison template remain available from Möbius Projects.** The app has a manifest, a launcher, a Project template
+**Status: version 0.8.1 updates the app icon; version 0.8.0 added deleting a single comparison and the App Store listing metadata (icon, tagline, description) to the in-app comparison workflow from 0.7.0, which is merged to `main` and installed as app 10. The older Möbius Project workflow and its Paper comparison template remain available from Möbius Projects.** The app has a manifest, a launcher, a Project template
 with agent guidance, a service with seven agent tools — `project_status`,
 `add_source` (register an uploaded PDF and extract its page text with
 pypdf), `check_evidence` (deterministic quotation checking),
