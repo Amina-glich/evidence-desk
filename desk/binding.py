@@ -22,7 +22,9 @@ should replace the database read here; the checks below stay the same.
 
 from __future__ import annotations
 
+import json
 import os
+import re
 import sqlite3
 import stat
 from dataclasses import dataclass
@@ -35,9 +37,13 @@ from desk.project_fs import UUID_RE, Project, open_project
 
 
 MAX_DELEGATION_DEPTH = 8
+# An in-app workspace: the app's own chat (``chats.created_by_app_id``, no
+# project) whose id the app frame saved in ``chat_<workspace id>.json``.
+WORKSPACE_CHAT_RE = re.compile(r"^chat_([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\.json$")
+MAX_CHAT_FILE_BYTES = 4096
 DB_RELATIVE = ("db", "ultimate.db")
 REQUIRED_COLUMNS = {
-  "chats": frozenset({"id", "project_id", "deleted_at"}),
+  "chats": frozenset({"id", "project_id", "deleted_at", "created_by_app_id"}),
   "delegations": frozenset({"parent_chat_id", "child_chat_id"}),
   "projects": frozenset({"id", "name", "root_path", "source_app_id", "deleted_at"}),
 }
@@ -56,9 +62,14 @@ class ProjectBinding:
   chat_id: str
   # The project chat reached from ``chat_id``; its uploads belong to the user.
   project_chat_id: str
+  # "project" (a Möbius Project) or "workspace" (an in-app workspace kept in
+  # the app's own storage folder; ``data_root`` is then that folder).
+  kind: str = "project"
 
   def open(self) -> Project:
-    """Open the bound project root, refusing symlinks on the way."""
+    """Open the bound project or workspace root, refusing symlinks on the way."""
+    if self.kind == "workspace":
+      return open_project(self.app_storage_dir, self.project_id, container="workspaces")
     return open_project(self.data_root, self.project_id)
 
 
@@ -156,8 +167,14 @@ def _require_uuid(value: object, code: str, message: str) -> str:
   return value
 
 
-def walk_to_project_chat(conn: sqlite3.Connection, chat_id: str) -> tuple[str, str]:
-  """Follow helper chats to their project chat; returns (chat id, project id)."""
+def walk_to_project_chat(
+  conn: sqlite3.Connection, chat_id: str, app_id: int | None = None,
+) -> tuple[str, str | None]:
+  """Follow helper chats to their root chat; returns (chat id, project id).
+
+  The project id is ``None`` when the root chat is this app's own embedded
+  chat (``created_by_app_id == app_id``), i.e. an in-app workspace chat.
+  """
   current = chat_id
   visited: set[str] = set()
   for _ in range(MAX_DELEGATION_DEPTH + 1):
@@ -167,11 +184,12 @@ def walk_to_project_chat(conn: sqlite3.Connection, chat_id: str) -> tuple[str, s
       )
     visited.add(current)
     row = conn.execute(
-      "SELECT project_id, deleted_at FROM chats WHERE id = ?", (current,),
+      "SELECT project_id, deleted_at, created_by_app_id FROM chats WHERE id = ?",
+      (current,),
     ).fetchone()
     if row is None:
       raise DeskError("chat_not_found", "The calling chat does not exist.", status=403)
-    project_id, deleted_at = row
+    project_id, deleted_at, created_by = row
     if deleted_at is not None:
       raise DeskError("chat_deleted", "The calling chat was deleted.", status=403)
     if project_id:
@@ -183,9 +201,12 @@ def walk_to_project_chat(conn: sqlite3.Connection, chat_id: str) -> tuple[str, s
       (current,),
     ).fetchone()
     if parent is None:
+      if app_id is not None and created_by == app_id:
+        return current, None
       raise DeskError(
         "not_project_chat",
-        "Evidence Desk tools only work in a chat inside an Evidence Desk project.",
+        "Evidence Desk tools only work in an Evidence Desk project chat or "
+        "the Evidence Desk app's own chat.",
         status=403,
       )
     current = _require_uuid(
@@ -193,6 +214,59 @@ def walk_to_project_chat(conn: sqlite3.Connection, chat_id: str) -> tuple[str, s
     )
   raise DeskError(
     "delegation_too_deep", "The helper chat chain is too deep.", status=403,
+  )
+
+
+def find_workspace_id(storage: Path, chat_id: str) -> str:
+  """The workspace whose saved chat file names ``chat_id``, or refuse.
+
+  The app frame writes ``chat_<workspace id>.json`` (``{"id": chat id}``) when
+  it mounts the embedded chat. Only regular, small files are read.
+  """
+  found: list[str] = []
+  try:
+    entries = list(os.scandir(storage))
+  except OSError as exc:
+    raise DeskError(
+      "platform_unavailable", "The app storage folder is unavailable.", status=503,
+    ) from exc
+  for entry in entries:
+    match = WORKSPACE_CHAT_RE.match(entry.name)
+    if not match:
+      continue
+    try:
+      info = entry.stat(follow_symlinks=False)
+      if not stat.S_ISREG(info.st_mode) or info.st_size > MAX_CHAT_FILE_BYTES:
+        continue
+      fd = os.open(entry.path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
+      with os.fdopen(fd, "rb") as handle:
+        saved = json.loads(handle.read(MAX_CHAT_FILE_BYTES))
+    except (OSError, ValueError):
+      continue
+    if isinstance(saved, dict) and saved.get("id") == chat_id:
+      found.append(match.group(1))
+  if len(found) != 1:
+    raise DeskError(
+      "workspace_not_found",
+      "This chat is not attached to an Evidence Desk workspace.",
+      status=403,
+    )
+  return found[0]
+
+
+def _bind_workspace(
+  root_chat_id: str, chat_id: str, storage: Path, data_root: Path, app_id: int,
+) -> ProjectBinding:
+  workspace_id = find_workspace_id(storage, root_chat_id)
+  return ProjectBinding(
+    project_id=workspace_id,
+    project_name="Evidence Desk workspace",
+    data_root=data_root,
+    app_storage_dir=storage,
+    app_id=app_id,
+    chat_id=chat_id,
+    project_chat_id=root_chat_id,
+    kind="workspace",
   )
 
 
@@ -218,7 +292,9 @@ def bind_call(call: object, env: Mapping[str, str]) -> ProjectBinding:
   conn = connect_readonly(data_root)
   try:
     require_schema(conn)
-    project_chat_id, project_id = walk_to_project_chat(conn, chat_id)
+    project_chat_id, project_id = walk_to_project_chat(conn, chat_id, app_id)
+    if project_id is None:
+      return _bind_workspace(project_chat_id, chat_id, storage, data_root, app_id)
     row = conn.execute(
       "SELECT id, name, root_path, source_app_id, deleted_at "
       "FROM projects WHERE id = ?",

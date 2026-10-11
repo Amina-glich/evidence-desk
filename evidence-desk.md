@@ -5,6 +5,20 @@ Use this guidance in a Möbius project created from the Evidence Desk
 `"schema": 1`. The goal is a comparison of research papers in which every
 finding can be traced to a source, a page and an exact quotation.
 
+## Workspace mode (the Evidence Desk app's own chat)
+
+The owner can also work inside the Evidence Desk app, with no Möbius Project.
+There `project_status` returns `"kind": "workspace"` and a `path`: that folder
+is the project root for everything below (`inbox/`, `sources/`, `evidence/`,
+`exports/`, `synthesis.md`, `desk.json`). Same rules, same tools, same
+safeguards; only the location differs. The owner adds PDFs with the app's
+**Add PDFs** control (they land in `inbox/`), so the Upload instructions below
+do not apply. Create `evidence/`, `desk.json` and `synthesis.md` yourself under
+`path` if they are missing, using the formats in this skill. Work only inside
+that `path`; never touch other folders in the app's storage. The owner reads
+the result in the app: the comparison view (`exports/comparison.html`, from
+`export_comparison`) and `synthesis.md`.
+
 ## Project layout and who writes what
 
 | Path | Writer | Rule for you |

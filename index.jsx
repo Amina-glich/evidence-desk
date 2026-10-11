@@ -14,6 +14,7 @@
  * so there is no Delete control either.
  */
 import { useCallback, useEffect, useState } from 'react'
+import Workspace from './workspace.jsx'
 
 const TEMPLATE_ID = 'paper-comparison'
 
@@ -189,6 +190,8 @@ export default function App() {
         </p>
       </div>
     </header>
+
+    <Workspace />
 
     <section className="ed-panel" aria-labelledby="comparisons-title">
       <div className="ed-panel-head">

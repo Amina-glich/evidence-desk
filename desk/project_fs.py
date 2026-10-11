@@ -175,14 +175,21 @@ def _write_all(fd: int, data: bytes) -> None:
     view = view[written:]
 
 
-def open_project(data_root: Path, project_id: str) -> "Project":
-  """Open ``<data_root>/projects/<project_id>`` refusing any symlink on the way.
+ROOT_CONTAINERS = frozenset({"projects", "workspaces"})
 
-  ``data_root`` itself is the platform's trusted volume (it may be a mount
-  point); every component below it must be a real directory.
+
+def open_project(data_root: Path, project_id: str, container: str = "projects") -> "Project":
+  """Open ``<data_root>/<container>/<project_id>`` refusing any symlink on the way.
+
+  ``container`` is ``projects`` (a Möbius Project under the platform data
+  folder) or ``workspaces`` (an in-app workspace under the app's own storage
+  folder, passed as ``data_root``). ``data_root`` itself is trusted (it may be
+  a mount point); every component below it must be a real directory.
   """
   require_posix()
   validate_project_id(project_id)
+  if container not in ROOT_CONTAINERS:
+    raise DeskError("invalid_project", "The project folder is not valid.")
   try:
     data_fd = os.open(str(data_root), _dir_flags() & ~os.O_NOFOLLOW)
   except OSError as exc:
@@ -191,7 +198,7 @@ def open_project(data_root: Path, project_id: str) -> "Project":
     ) from exc
   try:
     try:
-      projects_fd = _open_child_dir(data_fd, "projects")
+      projects_fd = _open_child_dir(data_fd, container)
     except DeskError as exc:
       if exc.code == "not_found":
         raise DeskError(

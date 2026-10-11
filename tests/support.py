@@ -121,13 +121,35 @@ class Platform:
     env.update(overrides)
     return {key: value for key, value in env.items() if value is not None}
 
-  def add_chat(self, *, project_id=None, deleted=False, chat_id=None) -> str:
+  def add_chat(
+    self, *, project_id=None, deleted=False, chat_id=None, created_by_app_id=None,
+  ) -> str:
     chat_id = chat_id or new_id()
     self.writer.execute(
-      "INSERT INTO chats (id, project_id, deleted_at) VALUES (?, ?, ?)",
-      (chat_id, project_id, "2026-10-01 00:00:00" if deleted else None),
+      "INSERT INTO chats (id, project_id, deleted_at, created_by_app_id) "
+      "VALUES (?, ?, ?, ?)",
+      (chat_id, project_id, "2026-10-01 00:00:00" if deleted else None,
+       created_by_app_id),
     )
     return chat_id
+
+  def add_workspace(self, *, make_dir=True, link_chat=True, starter=False) -> tuple[str, str]:
+    """An in-app workspace and its app chat; returns (workspace id, chat id)."""
+    workspace_id = new_id()
+    chat_id = self.add_chat(created_by_app_id=APP_ID)
+    if make_dir:
+      root = self.app_storage / "workspaces" / workspace_id
+      root.mkdir(parents=True)
+      if starter:
+        copy_template_files(root)
+    if link_chat:
+      (self.app_storage / f"chat_{workspace_id}.json").write_text(
+        json.dumps({"id": chat_id}), encoding="utf-8",
+      )
+    return workspace_id, chat_id
+
+  def workspace_root(self, workspace_id: str) -> Path:
+    return self.app_storage / "workspaces" / workspace_id
 
   def add_project(
     self, *, app_id=APP_ID, deleted=False, root_path=None, make_dir=True,
